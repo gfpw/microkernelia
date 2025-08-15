@@ -4,22 +4,26 @@ pub mod vsock_transport {
         // Aquí se implementará el framing y la gestión de conexiones vsock
     }
 
-    pub fn read_frame(buf: &mut [u8]) -> Option<usize> {
-        // Simula la lectura de un frame MCP (stub)
+    /// Framing MCP: lectura y escritura de mensajes length-prefixed (u32 big-endian)
+    pub fn read_frame(buf: &mut [u8]) -> Option<&[u8]> {
+        // Simulación: en una implementación real, leería de la cola vsock RX
+        // Aquí solo retorna None (stub)
         None
     }
 
-    pub fn write_frame(data: &[u8]) -> bool {
-        // Simula el envío de un frame MCP (stub)
+    pub fn write_frame(json: &[u8]) -> bool {
+        if json.len() > 1024 * 1024 { return false; }
+        // Simulación: en una implementación real, escribiría en la cola vsock TX
+        crate::serial_println!("[mcp-vsock] Enviando frame de {} bytes", json.len());
         true
     }
 
-    pub fn frame_message(json: &[u8], out: &mut [u8]) -> Option<usize> {
+    pub fn frame_message(json: &[u8], out: &mut [u8]) -> Option<&[u8]> {
         if json.len() > 1024 * 1024 { return None; }
         if out.len() < json.len() + 4 { return None; }
         let len = json.len() as u32;
         out[0..4].copy_from_slice(&len.to_be_bytes());
         out[4..4+json.len()].copy_from_slice(json);
-        Some(json.len() + 4)
+        Some(&out[..json.len()+4])
     }
 }
