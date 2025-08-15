@@ -69,13 +69,19 @@ pub mod mcp_server {
                 // Parsear JSON-RPC: {"method":..., "params":...}
                 if let Ok(req) = miniserde::json::from_slice::<miniserde::json::Value>(frame) {
                     if let Some(method) = req.get("method").and_then(|m| m.as_str()) {
+                        if !["infer", "health", "metadata", "load_model"].contains(&method) {
+                            crate::serial_println!("[mcp] Método desconocido: {}", method);
+                            continue;
+                        }
                         let params = req.get("params").and_then(|p| p.as_object()).map(|_| frame).unwrap_or(&[]);
                         if let Some(resp) = crate::mcp_server::dispatch(method, params) {
                             let _ = crate::mcp_vsock_transport::write_frame(&resp);
-                        } else {
-                            crate::serial_println!("[mcp] Método desconocido: {}", method);
                         }
+                    } else {
+                        crate::serial_println!("[mcp] Request sin método válido");
                     }
+                } else {
+                    crate::serial_println!("[mcp] JSON-RPC inválido");
                 }
             }
         }
