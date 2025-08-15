@@ -9,6 +9,35 @@ extern crate ai_runtime;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    // Símbolos exportados por el linker para las secciones
+    extern "C" {
+        static __text_start: u8;
+        static __text_end: u8;
+        static __data_start: u8;
+        static __data_end: u8;
+        static __bss_start: u8;
+        static __bss_end: u8;
+        static __stack_start: u8;
+        static __stack_end: u8;
+    }
+    // Inicializa MMU y protecciones
+    mmu_init();
+    unsafe {
+        mmu_protect_sections(
+            &__text_start as *const _ as usize,
+            &__text_end as *const _ as usize,
+            &__data_start as *const _ as usize,
+            &__data_end as *const _ as usize,
+            &__bss_start as *const _ as usize,
+            &__bss_end as *const _ as usize,
+            &__stack_start as *const _ as usize,
+            &__stack_end as *const _ as usize,
+        );
+        // Inserta guard page al final del stack principal
+        mmu_insert_guard_page(&__stack_end as *const _ as usize - PAGE_SIZE);
+        // Inicializa canario de stack principal
+        init_stack_canary(&__stack_start as *const _ as *mut u64);
+    }
     serial_println!("\n[unikernel-ai] Kernel booting...");
     drivers_virtio::vsock::init();
     drivers_virtio::fs::init();
@@ -177,6 +206,33 @@ pub fn map_phys_to_virt(phys: usize, size: usize) -> *mut u8 {
         // Invalida TLB para la región
         core::arch::asm!("invlpg [{}]", in(reg) phys, options(nostack, preserves_flags));
         phys as *mut u8
+    }
+}
+
+/// Desmapea una región de memoria (actualiza tablas y hace invlpg)
+pub fn unmap_phys_region(virt: usize, size: usize) {
+    unsafe {
+        let mut offset = 0;
+        while offset < size {
+            let vaddr = virt + offset;
+            let pml4_idx = (vaddr >> 39) & 0x1FF;
+            let pdpt_idx = (vaddr >> 30) & 0x1FF;
+            let pd_idx = (vaddr >> 21) & 0x1FF;
+            let pt_idx = (vaddr >> 12) & 0x1FF;
+            // Si es hugepage
+            if PD[pdpt_idx * PAGE_ENTRIES + pd_idx].0[pd_idx] & 0x80 != 0 {
+                PD[pdpt_idx * PAGE_ENTRIES + pd_idx].0[pd_idx] = 0;
+                offset += 2 * 1024 * 1024;
+            } else {
+                // 4KiB page
+                let pt_base = &mut PD[pdpt_idx * PAGE_ENTRIES + pd_idx] as *mut _ as *mut PageTable;
+                let pt = &mut (*pt_base).0;
+                pt[pt_idx] = 0;
+                offset += 4096;
+            }
+            // Invalida TLB para la página
+            core::arch::asm!("invlpg [{}]", in(reg) vaddr, options(nostack, preserves_flags));
+        }
     }
 }
 
