@@ -14,6 +14,7 @@ pub mod mcp_server {
         McpTool { name: "infer", handler: handle_infer },
         McpTool { name: "health", handler: handle_health },
         McpTool { name: "metadata", handler: handle_metadata },
+        McpTool { name: "load_model", handler: handle_load_model },
     ];
 
     pub fn init() {
@@ -27,7 +28,7 @@ pub mod mcp_server {
 
     fn handle_infer(input: &[u8]) -> Option<Vec<u8>> {
         let req = crate::ai_stub::parse_infer_req(input)?;
-        let ai_result = ai_runtime::infer_stub(req.prompt);
+        let ai_result = ai_runtime::infer(req.prompt);
         let resp = crate::ai_stub::InferResponse {
             text: ai_result,
             tokens: ai_result.split_whitespace().count() as u32,
@@ -50,6 +51,22 @@ pub mod mcp_server {
             build: "dev",
         };
         Some(json::to_vec(&resp))
+    }
+
+    fn handle_load_model(input: &[u8]) -> Option<Vec<u8>> {
+        // Espera JSON: {"path": "ruta/modelo.bin"}
+        let v = miniserde::json::from_slice::<miniserde::json::Value>(input).ok()?;
+        let path = v.get("path")?.as_str()?;
+        match ai_runtime::load_model(path) {
+            Ok(()) => {
+                let resp = miniserde::json::json!({"status": "ok", "path": path});
+                Some(json::to_vec(&resp))
+            },
+            Err(e) => {
+                let resp = miniserde::json::json!({"status": "error", "error": e});
+                Some(json::to_vec(&resp))
+            }
+        }
     }
 
     pub fn dispatch(tool: &str, input: &[u8]) -> Option<Vec<u8>> {
