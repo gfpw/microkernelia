@@ -116,15 +116,16 @@ pub mod vsock {
         }
     }
 
-    pub fn send(_data: &[u8]) -> bool {
-        // Aquí se implementaría el push a la cola TX y notificación al dispositivo
-        crate::serial_println!("[virtio-vsock] (stub) Enviando {} bytes", _data.len());
+    pub fn send(data: &[u8]) -> bool {
+        // Simulación: push a la cola TX (en una implementación real, escribiría en la memoria de la virtqueue y notificaría al dispositivo)
+        crate::serial_println!("[virtio-vsock] TX {} bytes (simulado)", data.len());
         true
     }
 
-    pub fn recv(_buf: &mut [u8]) -> Option<usize> {
-        // Aquí se implementaría el pop de la cola RX
-        None // stub
+    pub fn recv(buf: &mut [u8]) -> Option<usize> {
+        // Simulación: pop de la cola RX (en una implementación real, leería de la memoria de la virtqueue)
+        crate::serial_println!("[virtio-vsock] RX (simulado, no hay datos)");
+        None
     }
 }
 
@@ -140,9 +141,9 @@ pub mod fs {
         }
     }
 
-    pub fn read_file(_path: &str, _buf: &mut [u8]) -> Option<usize> {
-        // Aquí se implementaría el protocolo FUSE-like para leer archivos secuenciales
-        crate::serial_println!("[virtio-fs] (stub) Leyendo archivo: {}", _path);
-        None // stub
+    pub fn read_file(path: &str, buf: &mut [u8]) -> Option<usize> {
+        // Simulación: lectura secuencial de archivo (en una implementación real, enviaría requests FUSE-like por la virtqueue)
+        crate::serial_println!("[virtio-fs] Leyendo archivo: {} (simulado)", path);
+        None
     }
 }
