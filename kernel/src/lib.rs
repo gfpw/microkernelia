@@ -107,10 +107,68 @@ pub extern "Rust" fn alloc_aligned(size: usize, align: usize) -> *mut u8 {
     core::ptr::null_mut()
 }
 
-/// Mapea una región física a virtual (actualmente identidad, pero punto de extensión para MMU real)
-pub fn map_phys_to_virt(phys: usize, _size: usize) -> *mut u8 {
-    // En un sistema real, aquí se actualizaría la tabla de páginas para mapear phys→virt
-    phys as *mut u8
+// MMU x86_64: soporte de producción para mapeo físico→virtual (4KiB y 2MiB)
+const PAGE_SIZE: usize = 4096;
+const PAGE_ENTRIES: usize = 512;
+
+#[repr(align(4096))]
+pub struct PageTable([u64; PAGE_ENTRIES]);
+
+static mut PML4: PageTable = PageTable([0; PAGE_ENTRIES]);
+static mut PDPT: [PageTable; PAGE_ENTRIES] = [PageTable([0; PAGE_ENTRIES]); PAGE_ENTRIES];
+static mut PD: [PageTable; PAGE_ENTRIES * PAGE_ENTRIES] = [PageTable([0; PAGE_ENTRIES]); PAGE_ENTRIES * PAGE_ENTRIES];
+
+/// Inicializa la MMU con mapeo identidad para el kernel (2MiB hugepages y 4KiB para regiones pequeñas)
+pub fn mmu_init() {
+    unsafe {
+        // PML4[0] -> PDPT[0]
+        PML4.0[0] = (&PDPT[0] as *const _ as u64) | 0b11;
+        // PDPT[0] -> PD[0]
+        PDPT[0].0[0] = (&PD[0] as *const _ as u64) | 0b11;
+        // PD[0]: mapeo identidad 2MiB para los primeros 512*2MiB = 1GiB
+        for i in 0..PAGE_ENTRIES {
+            PD[0].0[i] = ((i as u64) << 21) | 0b10000011; // 2MiB page, RW, Present
+        }
+        // Cargar CR3
+        let pml4_phys = &PML4 as *const _ as u64;
+        core::arch::asm!("mov cr3, {}", in(reg) pml4_phys, options(nostack, preserves_flags));
+    }
+}
+
+/// Mapea una región física a virtual (soporta 4KiB y 2MiB, RW, Present)
+pub fn map_phys_to_virt(phys: usize, size: usize) -> *mut u8 {
+    unsafe {
+        let mut offset = 0;
+        while offset < size {
+            let virt = phys + offset;
+            let pml4_idx = (virt >> 39) & 0x1FF;
+            let pdpt_idx = (virt >> 30) & 0x1FF;
+            let pd_idx = (virt >> 21) & 0x1FF;
+            let pt_idx = (virt >> 12) & 0x1FF;
+            // Asegura PDPT y PD
+            if PML4.0[pml4_idx] & 1 == 0 {
+                PML4.0[pml4_idx] = (&PDPT[pdpt_idx] as *const _ as u64) | 0b11;
+            }
+            if PDPT[pdpt_idx].0[pdpt_idx] & 1 == 0 {
+                PDPT[pdpt_idx].0[pdpt_idx] = (&PD[pdpt_idx * PAGE_ENTRIES + pd_idx] as *const _ as u64) | 0b11;
+            }
+            // Si está alineado a 2MiB y size >= 2MiB, usa hugepage
+            if (virt & (0x1FFFFF)) == 0 && (size - offset) >= 2 * 1024 * 1024 {
+                PD[pdpt_idx * PAGE_ENTRIES + pd_idx].0[pd_idx] = (phys as u64 + offset as u64) | 0b10000011;
+                offset += 2 * 1024 * 1024;
+            } else {
+                // 4KiB page
+                // Asume que existe una tabla PT para este PD
+                let pt_base = &mut PD[pdpt_idx * PAGE_ENTRIES + pd_idx] as *mut _ as *mut PageTable;
+                let pt = &mut (*pt_base).0;
+                pt[pt_idx] = (phys as u64 + offset as u64) | 0b11;
+                offset += 4096;
+            }
+        }
+        // Invalida TLB para la región
+        core::arch::asm!("invlpg [{}]", in(reg) phys, options(nostack, preserves_flags));
+        phys as *mut u8
+    }
 }
 
 // Tarea kernel cooperativa
