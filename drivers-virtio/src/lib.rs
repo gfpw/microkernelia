@@ -95,15 +95,36 @@ pub mod virtqueue {
 }
 
 pub mod vsock {
+    use super::virtqueue::VirtQueue;
+    static mut VSOCK_TX: Option<VirtQueue> = None;
+    static mut VSOCK_RX: Option<VirtQueue> = None;
+
     pub fn init() {
         crate::serial_println!("[virtio-vsock] Inicializando driver vsock");
         let devs = super::pci::find_virtio_devices_full();
         for dev in devs.iter().flatten() {
-            if dev.device_id == 0x1040 || dev.device_id == 0x105A { // 0x1040: vsock, 0x105A: modern vsock
+            if dev.device_id == 0x1040 || dev.device_id == 0x105A {
                 super::pci::enable_bus_master(dev.bus, dev.slot);
-                let _vq = super::virtqueue::setup_virtqueue(dev, 0, 256); // ejemplo: cola 0, tamaño 256
+                // Setup TX y RX queues (ejemplo: idx 0 y 1, tamaño 256)
+                let tx = super::virtqueue::setup_virtqueue(dev, 0, 256);
+                let rx = super::virtqueue::setup_virtqueue(dev, 1, 256);
+                unsafe {
+                    VSOCK_TX = Some(tx);
+                    VSOCK_RX = Some(rx);
+                }
             }
         }
+    }
+
+    pub fn send(_data: &[u8]) -> bool {
+        // Aquí se implementaría el push a la cola TX y notificación al dispositivo
+        crate::serial_println!("[virtio-vsock] (stub) Enviando {} bytes", _data.len());
+        true
+    }
+
+    pub fn recv(_buf: &mut [u8]) -> Option<usize> {
+        // Aquí se implementaría el pop de la cola RX
+        None // stub
     }
 }
 
@@ -112,10 +133,16 @@ pub mod fs {
         crate::serial_println!("[virtio-fs] Inicializando driver virtio-fs");
         let devs = super::pci::find_virtio_devices_full();
         for dev in devs.iter().flatten() {
-            if dev.device_id == 0x1049 { // 0x1049: virtio-fs
+            if dev.device_id == 0x1049 {
                 super::pci::enable_bus_master(dev.bus, dev.slot);
-                let _vq = super::virtqueue::setup_virtqueue(dev, 0, 256); // ejemplo: cola 0, tamaño 256
+                let _vq = super::virtqueue::setup_virtqueue(dev, 0, 256);
             }
         }
+    }
+
+    pub fn read_file(_path: &str, _buf: &mut [u8]) -> Option<usize> {
+        // Aquí se implementaría el protocolo FUSE-like para leer archivos secuenciales
+        crate::serial_println!("[virtio-fs] (stub) Leyendo archivo: {}", _path);
+        None // stub
     }
 }
