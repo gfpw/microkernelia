@@ -60,8 +60,23 @@ pub mod mcp_server {
     }
 
     pub fn mcp_server_loop() {
-        crate::serial_println!("[mcp] MCP server loop iniciado (stub)");
-        // En una implementación real: bucle de recepción de frames, parseo, dispatch y respuesta
+        crate::serial_println!("[mcp] MCP server loop iniciado");
+        let mut buf = [0u8; 4096];
+        loop {
+            if let Some(frame) = crate::mcp_vsock_transport::read_frame(&mut buf) {
+                // Parsear JSON-RPC: {"method":..., "params":...}
+                if let Ok(req) = miniserde::json::from_slice::<miniserde::json::Value>(frame) {
+                    if let Some(method) = req.get("method").and_then(|m| m.as_str()) {
+                        let params = req.get("params").and_then(|p| p.as_object()).map(|_| frame).unwrap_or(&[]);
+                        if let Some(resp) = crate::mcp_server::dispatch(method, params) {
+                            let _ = crate::mcp_vsock_transport::write_frame(&resp);
+                        } else {
+                            crate::serial_println!("[mcp] Método desconocido: {}", method);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
