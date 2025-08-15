@@ -15,6 +15,7 @@ pub mod mcp_server {
         McpTool { name: "health", handler: handle_health },
         McpTool { name: "metadata", handler: handle_metadata },
         McpTool { name: "load_model", handler: handle_load_model },
+        McpTool { name: "logs", handler: handle_logs },
     ];
 
     pub fn init() {
@@ -67,6 +68,13 @@ pub mod mcp_server {
                 Some(json::to_vec(&resp))
             }
         }
+    }
+
+    fn handle_logs(_input: &[u8]) -> Option<Vec<u8>> {
+        // Devuelve los últimos logs del ring buffer
+        let mut buf = [0u8; 1024];
+        let n = logging::log_read(&mut buf);
+        Some(buf[..n].to_vec())
     }
 
     pub fn dispatch(tool: &str, input: &[u8]) -> Option<Vec<u8>> {

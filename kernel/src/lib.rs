@@ -28,6 +28,8 @@ fn panic(_info: &PanicInfo) -> ! {
 #[macro_export]
 macro_rules! serial_println {
     ($($arg:tt)*) => {{
+        let msg = alloc::format!(concat!($($arg)*, "\n"));
+        $crate::logging::log_write(&msg);
         $crate::serial::_print(format_args_nl!($($arg)*));
     }};
 }
