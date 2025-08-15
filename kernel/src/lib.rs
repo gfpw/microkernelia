@@ -75,6 +75,36 @@ pub fn free_frame(addr: usize) {
     }
 }
 
+/// Asigna memoria alineada de tamaño `size` y alineación `align` usando frames del kernel.
+#[no_mangle]
+pub extern "Rust" fn alloc_aligned(size: usize, align: usize) -> *mut u8 {
+    // Solo soporta alineaciones potencias de 2 y múltiplos de FRAME_SIZE.
+    // Busca suficientes frames contiguos para satisfacer la petición.
+    let frames_needed = (size + FRAME_SIZE - 1) / FRAME_SIZE;
+    let mut start = None;
+    unsafe {
+        let mut count = 0;
+        for i in 0..MAX_FRAMES {
+            if FRAME_BITMAP[i] == 0 {
+                if start.is_none() { start = Some(i); }
+                count += 1;
+                if count == frames_needed {
+                    let base = start.unwrap();
+                    for j in base..(base + frames_needed) { FRAME_BITMAP[j] = 1; }
+                    let addr = base * FRAME_SIZE;
+                    // Ajustar alineación si es necesario
+                    let aligned_addr = (addr + align - 1) & !(align - 1);
+                    return aligned_addr as *mut u8;
+                }
+            } else {
+                start = None;
+                count = 0;
+            }
+        }
+    }
+    core::ptr::null_mut()
+}
+
 // Tarea kernel cooperativa
 pub struct Task {
     pub entry: fn(),

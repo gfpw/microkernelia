@@ -96,10 +96,18 @@ pub mod pci {
             write_volatile(PCI_CONFIG_DATA as *mut u32, cmd);
         }
     }
+
+    pub fn map_bar0_phys_to_virt(bar0_phys: u32, size: usize) -> *mut u8 {
+        // Aquí se debe integrar con el frame allocator del kernel para mapear la dirección física a virtual.
+        // Por simplicidad, asumimos identidad (1:1) en este ejemplo, pero en producción usar el mapeador real.
+        bar0_phys as *mut u8
+    }
 }
 
 pub mod virtqueue {
     use super::{VirtqDesc, VirtqAvail, VirtqUsed, VirtqUsedElem};
+    use crate::pci::map_bar0_phys_to_virt;
+    use crate::serial_println;
 
     pub struct VirtQueue {
         pub desc: *mut VirtqDesc,
@@ -109,41 +117,48 @@ pub mod virtqueue {
     }
 
     pub fn setup_virtqueue(dev: &super::pci::VirtioDevice, queue_idx: u16, queue_size: u16) -> VirtQueue {
-        // Asignar memoria alineada para desc/avail/used (aquí se asume memoria estática, en producción usar allocador)
-        static mut DESC: [VirtqDesc; 256] = [VirtqDesc { addr: 0, len: 0, flags: 0, next: 0 }; 256];
-        static mut AVAIL: VirtqAvail = VirtqAvail { flags: 0, idx: 0, ring: [0; 256] };
-        static mut USED: VirtqUsed = VirtqUsed { flags: 0, idx: 0, ring: [VirtqUsedElem { id: 0, len: 0 }; 256] };
+        // Asignar memoria alineada para desc/avail/used usando el allocador del kernel
+        // Aquí se asume que existe una función alloc_aligned(size, align) -> *mut u8
+        extern "Rust" {
+            fn alloc_aligned(size: usize, align: usize) -> *mut u8;
+        }
+        let desc_ptr = unsafe { alloc_aligned(core::mem::size_of::<VirtqDesc>() * queue_size as usize, 16) } as *mut VirtqDesc;
+        let avail_ptr = unsafe { alloc_aligned(core::mem::size_of::<super::VirtqAvail>(), 2) } as *mut super::VirtqAvail;
+        let used_ptr = unsafe { alloc_aligned(core::mem::size_of::<super::VirtqUsed>(), 4) } as *mut super::VirtqUsed;
+        serial_println!("[virtqueue] setup_virtqueue: desc={:p} avail={:p} used={:p}", desc_ptr, avail_ptr, used_ptr);
         VirtQueue {
-            desc: unsafe { &mut DESC as *mut _ },
-            avail: unsafe { &mut AVAIL as *mut _ },
-            used: unsafe { &mut USED as *mut _ },
+            desc: desc_ptr,
+            avail: avail_ptr,
+            used: used_ptr,
             size: queue_size,
         }
-    }
-
-    // Inicialización mínima (stub)
-    pub fn init() {
-        crate::serial_println!("[virtqueue] Inicializando virtqueues (stub)");
     }
 }
 
 pub mod vsock {
     use super::virtqueue::VirtQueue;
+    use crate::pci::map_bar0_phys_to_virt;
+    use crate::serial_println;
+    use core::ptr::write_volatile;
+    use core::sync::atomic::{compiler_fence, Ordering};
+
     static mut VSOCK_TX: Option<VirtQueue> = None;
     static mut VSOCK_RX: Option<VirtQueue> = None;
+    static mut VSOCK_BAR0: Option<*mut u8> = None;
 
     pub fn init() {
-        crate::serial_println!("[virtio-vsock] Inicializando driver vsock");
+        serial_println!("[virtio-vsock] Inicializando driver vsock");
         let devs = super::pci::find_virtio_devices_full();
         for dev in devs.iter().flatten() {
             if dev.device_id == 0x1040 || dev.device_id == 0x105A {
                 super::pci::enable_bus_master(dev.bus, dev.slot);
-                // Setup TX y RX queues (ejemplo: idx 0 y 1, tamaño 256)
+                let bar0_virt = map_bar0_phys_to_virt(dev.bar0 & 0xFFFF_FFF0, 0x1000);
                 let tx = super::virtqueue::setup_virtqueue(dev, 0, 256);
                 let rx = super::virtqueue::setup_virtqueue(dev, 1, 256);
                 unsafe {
                     VSOCK_TX = Some(tx);
                     VSOCK_RX = Some(rx);
+                    VSOCK_BAR0 = Some(bar0_virt);
                 }
             }
         }
@@ -151,7 +166,7 @@ pub mod vsock {
 
     pub fn send(data: &[u8]) -> bool {
         unsafe {
-            if let Some(ref mut tx) = VSOCK_TX {
+            if let (Some(ref mut tx), Some(bar0)) = (VSOCK_TX.as_mut(), VSOCK_BAR0) {
                 let desc = &mut *tx.desc;
                 desc.addr = data.as_ptr() as u64;
                 desc.len = data.len() as u32;
@@ -162,10 +177,10 @@ pub mod vsock {
                 avail.ring[idx] = 0;
                 compiler_fence(Ordering::SeqCst);
                 avail.idx = avail.idx.wrapping_add(1);
-                // Notificar al dispositivo: escribir en el registro de notificación (ejemplo: offset 0x50)
-                let bar0 = 0x1000 as *mut u32; // En producción, mapear correctamente el BAR0
-                write_volatile(bar0, 1);
-                crate::serial_println!("[virtio-vsock] TX notificado: {} bytes", data.len());
+                // Notificar al dispositivo usando el BAR0 real (offset 0x50)
+                let notify_reg = bar0.add(0x50) as *mut u32;
+                write_volatile(notify_reg, 1);
+                serial_println!("[virtio-vsock] TX notificado: {} bytes", data.len());
                 return true;
             }
         }
@@ -184,7 +199,7 @@ pub mod vsock {
                         for i in 0..len { buf[i] = *src.add(i); }
                         used.idx -= 1;
                         compiler_fence(Ordering::SeqCst);
-                        crate::serial_println!("[virtio-vsock] RX consumido: {} bytes", len);
+                        serial_println!("[virtio-vsock] RX consumido: {} bytes", len);
                         return Some(len);
                     }
                 }
@@ -195,8 +210,13 @@ pub mod vsock {
 }
 
 pub mod fs {
+    use crate::pci::map_bar0_phys_to_virt;
+    use crate::serial_println;
+    use core::ptr::write_volatile;
+    use core::sync::atomic::{compiler_fence, Ordering};
+
     pub fn init() {
-        crate::serial_println!("[virtio-fs] Inicializando driver virtio-fs");
+        serial_println!("[virtio-fs] Inicializando driver virtio-fs");
         let devs = super::pci::find_virtio_devices_full();
         for dev in devs.iter().flatten() {
             if dev.device_id == 0x1049 {
@@ -222,10 +242,11 @@ pub mod fs {
                     avail.ring[idx] = 0;
                     compiler_fence(Ordering::SeqCst);
                     avail.idx = avail.idx.wrapping_add(1);
-                    // Notificar al dispositivo (ejemplo: offset 0x50)
-                    let bar0 = dev.bar0 as *mut u32;
-                    write_volatile(bar0, 1);
-                    crate::serial_println!("[virtio-fs] Lectura notificada de {} bytes de {}", buf.len(), path);
+                    // Notificar al dispositivo usando el BAR0 real (offset 0x50)
+                    let bar0_virt = map_bar0_phys_to_virt(dev.bar0 & 0xFFFF_FFF0, 0x1000);
+                    let notify_reg = bar0_virt.add(0x50) as *mut u32;
+                    write_volatile(notify_reg, 1);
+                    serial_println!("[virtio-fs] Lectura notificada de {} bytes de {}", buf.len(), path);
                     // Esperar a que el dispositivo complete la transferencia (polling de used.idx)
                     let used = &mut *vq.used;
                     let mut wait = 0;
@@ -235,7 +256,7 @@ pub mod fs {
                     }
                     if used.idx > 0 {
                         let len = desc.len as usize;
-                        crate::serial_println!("[virtio-fs] Lectura completada de {} bytes de {}", len, path);
+                        serial_println!("[virtio-fs] Lectura completada de {} bytes de {}", len, path);
                         return Some(len);
                     }
                 }
