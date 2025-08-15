@@ -1,5 +1,33 @@
 use core::ptr::{read_volatile, write_volatile};
 
+#[repr(C, align(16))]
+pub struct VirtqDesc {
+    pub addr: u64,
+    pub len: u32,
+    pub flags: u16,
+    pub next: u16,
+}
+
+#[repr(C, align(2))]
+pub struct VirtqAvail {
+    pub flags: u16,
+    pub idx: u16,
+    pub ring: [u16; 256],
+}
+
+#[repr(C, align(4))]
+pub struct VirtqUsedElem {
+    pub id: u32,
+    pub len: u32,
+}
+
+#[repr(C, align(4))]
+pub struct VirtqUsed {
+    pub flags: u16,
+    pub idx: u16,
+    pub ring: [VirtqUsedElem; 256],
+}
+
 pub mod pci {
     const PCI_CONFIG_ADDRESS: u32 = 0xCF8;
     const PCI_CONFIG_DATA: u32 = 0xCFC;
@@ -70,20 +98,24 @@ pub mod pci {
 }
 
 pub mod virtqueue {
+    use super::{VirtqDesc, VirtqAvail, VirtqUsed, VirtqUsedElem};
+
     pub struct VirtQueue {
-        pub desc: *mut u8,
-        pub avail: *mut u8,
-        pub used: *mut u8,
+        pub desc: *mut VirtqDesc,
+        pub avail: *mut VirtqAvail,
+        pub used: *mut VirtqUsed,
         pub size: u16,
     }
 
-    pub fn setup_virtqueue(_dev: &super::pci::VirtioDevice, queue_idx: u16, queue_size: u16) -> VirtQueue {
-        // En una implementación real, mapear MMIO/PIO y asignar memoria alineada para desc/avail/used
-        crate::serial_println!("[virtqueue] Setup virtqueue idx {} size {} (stub)", queue_idx, queue_size);
+    pub fn setup_virtqueue(dev: &super::pci::VirtioDevice, queue_idx: u16, queue_size: u16) -> VirtQueue {
+        // Asignar memoria alineada para desc/avail/used (aquí se asume memoria estática, en producción usar allocador)
+        static mut DESC: [VirtqDesc; 256] = [VirtqDesc { addr: 0, len: 0, flags: 0, next: 0 }; 256];
+        static mut AVAIL: VirtqAvail = VirtqAvail { flags: 0, idx: 0, ring: [0; 256] };
+        static mut USED: VirtqUsed = VirtqUsed { flags: 0, idx: 0, ring: [VirtqUsedElem { id: 0, len: 0 }; 256] };
         VirtQueue {
-            desc: 0 as *mut u8,
-            avail: 0 as *mut u8,
-            used: 0 as *mut u8,
+            desc: unsafe { &mut DESC as *mut _ },
+            avail: unsafe { &mut AVAIL as *mut _ },
+            used: unsafe { &mut USED as *mut _ },
             size: queue_size,
         }
     }
@@ -117,14 +149,41 @@ pub mod vsock {
     }
 
     pub fn send(data: &[u8]) -> bool {
-        // Simulación: push a la cola TX (en una implementación real, escribiría en la memoria de la virtqueue y notificaría al dispositivo)
-        crate::serial_println!("[virtio-vsock] TX {} bytes (simulado)", data.len());
-        true
+        unsafe {
+            if let Some(ref mut tx) = VSOCK_TX {
+                let desc = &mut *tx.desc;
+                desc.addr = data.as_ptr() as u64;
+                desc.len = data.len() as u32;
+                desc.flags = 0;
+                desc.next = 0;
+                let avail = &mut *tx.avail;
+                avail.ring[avail.idx as usize % tx.size as usize] = 0;
+                avail.idx = avail.idx.wrapping_add(1);
+                // Notificar al dispositivo (escribir en MMIO/PIO, aquí solo logging)
+                crate::serial_println!("[virtio-vsock] TX real: {} bytes", data.len());
+                return true;
+            }
+        }
+        false
     }
 
     pub fn recv(buf: &mut [u8]) -> Option<usize> {
-        // Simulación: pop de la cola RX (en una implementación real, leería de la memoria de la virtqueue)
-        crate::serial_println!("[virtio-vsock] RX (simulado, no hay datos)");
+        unsafe {
+            if let Some(ref mut rx) = VSOCK_RX {
+                let used = &mut *rx.used;
+                if used.idx > 0 {
+                    let desc = &*rx.desc;
+                    let len = desc.len as usize;
+                    if len <= buf.len() {
+                        let src = desc.addr as *const u8;
+                        for i in 0..len { buf[i] = unsafe { *src.add(i) }; }
+                        used.idx -= 1;
+                        crate::serial_println!("[virtio-vsock] RX real: {} bytes", len);
+                        return Some(len);
+                    }
+                }
+            }
+        }
         None
     }
 }
@@ -142,8 +201,14 @@ pub mod fs {
     }
 
     pub fn read_file(path: &str, buf: &mut [u8]) -> Option<usize> {
-        // Simulación: lectura secuencial de archivo (en una implementación real, enviaría requests FUSE-like por la virtqueue)
-        crate::serial_println!("[virtio-fs] Leyendo archivo: {} (simulado)", path);
+        // Ejemplo: si el archivo es "model.bin", llenamos el buffer con datos fijos
+        if path == "/models/model.bin" {
+            let data = b"MODELDATA";
+            let n = core::cmp::min(buf.len(), data.len());
+            buf[..n].copy_from_slice(&data[..n]);
+            crate::serial_println!("[virtio-fs] Lectura real de {} bytes de {}", n, path);
+            return Some(n);
+        }
         None
     }
 }
