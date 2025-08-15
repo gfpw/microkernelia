@@ -7,6 +7,8 @@ extern crate mcp_core;
 extern crate mcp_vsock_transport;
 extern crate ai_runtime;
 
+mod tests;
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     // Símbolos exportados por el linker para las secciones
@@ -38,6 +40,9 @@ pub extern "C" fn _start() -> ! {
         // Inicializa canario de stack principal
         init_stack_canary(&__stack_start as *const _ as *mut u64);
     }
+    // Ejecuta pruebas automáticas de stack
+    tests::test_stack_canary();
+    // tests::test_guard_page(); // Descomentar para probar page fault (detendrá el kernel)
     serial_println!("\n[unikernel-ai] Kernel booting...");
     drivers_virtio::vsock::init();
     drivers_virtio::fs::init();
