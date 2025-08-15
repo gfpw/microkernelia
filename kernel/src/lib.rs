@@ -291,3 +291,14 @@ pub fn run_scheduler() -> ! {
         }
     }
 }
+
+/// Inicializa un canario de pila al crear el stack y verifica su integridad al hacer switch o terminar la tarea
+static STACK_CANARY: u64 = 0xDEADC0DECAFEBABE;
+
+pub fn init_stack_canary(stack_start: *mut u64) {
+    unsafe { *stack_start = STACK_CANARY; }
+}
+
+pub fn check_stack_canary(stack_start: *const u64) -> bool {
+    unsafe { *stack_start == STACK_CANARY }
+}
