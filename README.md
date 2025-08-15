@@ -24,3 +24,19 @@ Este workspace contiene la estructura base para el desarrollo de un unikernel Ru
 - [ ] Integrar drivers virtio (vsock, fs).
 - [ ] Implementar stub MCP y AI runtime.
 - [ ] Pruebas de integración y documentación avanzada.
+
+## Protección de memoria y robustez de stack
+
+El kernel implementa:
+- MMU x86_64 con mapeo alto, protección RX/NX, guard pages y canarios de stack.
+- Pruebas automáticas al arrancar: detección de corrupción de stack y protección de guard page.
+- Los resultados se reportan por log serial y pueden consultarse vía MCP logs.
+
+### Ejemplo de log de prueba
+```
+[test] Verificando canario de stack...
+[test] Canario OK antes de corrupción
+[test] Canario detectó corrupción correctamente
+```
+
+Para probar la protección de guard page, descomentar la línea correspondiente en el arranque del kernel (ver `kernel/src/lib.rs`).
