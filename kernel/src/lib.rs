@@ -107,6 +107,12 @@ pub extern "Rust" fn alloc_aligned(size: usize, align: usize) -> *mut u8 {
     core::ptr::null_mut()
 }
 
+/// Mapea una región física a virtual (actualmente identidad, pero punto de extensión para MMU real)
+pub fn map_phys_to_virt(phys: usize, _size: usize) -> *mut u8 {
+    // En un sistema real, aquí se actualizaría la tabla de páginas para mapear phys→virt
+    phys as *mut u8
+}
+
 // Tarea kernel cooperativa
 pub struct Task {
     pub entry: fn(),

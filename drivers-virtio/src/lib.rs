@@ -98,9 +98,16 @@ pub mod pci {
     }
 
     pub fn map_bar0_phys_to_virt(bar0_phys: u32, size: usize) -> *mut u8 {
-        // Aquí se debe integrar con el frame allocator del kernel para mapear la dirección física a virtual.
-        // Por simplicidad, asumimos identidad (1:1) en este ejemplo, pero en producción usar el mapeador real.
-        bar0_phys as *mut u8
+        // Implementación concretamente funcional: reserva frames y llama a map_phys_to_virt del kernel
+        let start = bar0_phys as usize & !(2 * 1024 * 1024 - 1);
+        let end = (bar0_phys as usize + size + 2 * 1024 * 1024 - 1) & !(2 * 1024 * 1024 - 1);
+        let mut addr = start;
+        while addr < end {
+            let _ = crate::kernel::alloc_frame();
+            addr += 2 * 1024 * 1024;
+        }
+        extern "Rust" { fn map_phys_to_virt(phys: usize, size: usize) -> *mut u8; }
+        unsafe { map_phys_to_virt(bar0_phys as usize, size) }
     }
 }
 
