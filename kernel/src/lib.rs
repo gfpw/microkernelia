@@ -211,6 +211,34 @@ pub fn map_mmio_region(phys: usize, size: usize) -> *mut u8 {
     }
 }
 
+/// Marca las páginas de código RX, datos RW, stack RW, heap RW, todo NX excepto código
+pub fn mmu_protect_sections(text_start: usize, text_end: usize, data_start: usize, data_end: usize, bss_start: usize, bss_end: usize, stack_start: usize, stack_end: usize) {
+    unsafe {
+        // Código: RX (Present, Read, Execute)
+        let mut addr = text_start;
+        while addr < text_end {
+            let pml4_idx = (addr >> 39) & 0x1FF;
+            let pdpt_idx = (addr >> 30) & 0x1FF;
+            let pd_idx = (addr >> 21) & 0x1FF;
+            let entry = &mut PD[pdpt_idx * PAGE_ENTRIES + pd_idx].0[pd_idx];
+            *entry &= !(1u64 << 63); // Quita NX
+            addr += 2 * 1024 * 1024;
+        }
+        // Datos, BSS, Stack, Heap: RW, NX
+        for &(start, end) in &[(data_start, data_end), (bss_start, bss_end), (stack_start, stack_end)] {
+            let mut addr = start;
+            while addr < end {
+                let pml4_idx = (addr >> 39) & 0x1FF;
+                let pdpt_idx = (addr >> 30) & 0x1FF;
+                let pd_idx = (addr >> 21) & 0x1FF;
+                let entry = &mut PD[pdpt_idx * PAGE_ENTRIES + pd_idx].0[pd_idx];
+                *entry |= 1u64 << 63; // NX
+                addr += 2 * 1024 * 1024;
+            }
+        }
+    }
+}
+
 // Tarea kernel cooperativa
 pub struct Task {
     pub entry: fn(),
