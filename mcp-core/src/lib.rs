@@ -1,12 +1,67 @@
 pub mod mcp_server {
     use core::sync::atomic::{AtomicBool, Ordering};
+    use miniserde::json;
+
     static READY: AtomicBool = AtomicBool::new(false);
+
+    pub struct McpTool<'a> {
+        pub name: &'a str,
+        pub handler: fn(&[u8]) -> Option<Vec<u8>>,
+    }
+
+    static TOOLS: &[McpTool] = &[
+        McpTool { name: "infer", handler: handle_infer },
+        McpTool { name: "health", handler: handle_health },
+        McpTool { name: "metadata", handler: handle_metadata },
+    ];
+
     pub fn init() {
         crate::serial_println!("[mcp] Servidor MCP inicializado (stub)");
         READY.store(true, Ordering::SeqCst);
     }
+
     pub fn is_ready() -> bool {
         READY.load(Ordering::SeqCst)
+    }
+
+    fn handle_infer(input: &[u8]) -> Option<Vec<u8>> {
+        let req = crate::ai_stub::parse_infer_req(input)?;
+        let resp = crate::ai_stub::InferResponse {
+            text: "[ai] Respuesta de ejemplo",
+            tokens: 3,
+            latency_ms: 1,
+        };
+        Some(json::to_vec(&resp))
+    }
+
+    fn handle_health(_input: &[u8]) -> Option<Vec<u8>> {
+        let resp = crate::ai_stub::HealthResponse { status: "ok", details: "stub" };
+        Some(json::to_vec(&resp))
+    }
+
+    fn handle_metadata(_input: &[u8]) -> Option<Vec<u8>> {
+        let resp = crate::ai_stub::MetadataResponse {
+            model_name: "stub-model",
+            quantization: "none",
+            arch: "x86_64",
+            features: &["SSE2"],
+            build: "dev",
+        };
+        Some(json::to_vec(&resp))
+    }
+
+    pub fn dispatch(tool: &str, input: &[u8]) -> Option<Vec<u8>> {
+        for t in TOOLS {
+            if t.name == tool {
+                return (t.handler)(input);
+            }
+        }
+        None
+    }
+
+    pub fn mcp_server_loop() {
+        crate::serial_println!("[mcp] MCP server loop iniciado (stub)");
+        // En una implementación real: bucle de recepción de frames, parseo, dispatch y respuesta
     }
 }
 
