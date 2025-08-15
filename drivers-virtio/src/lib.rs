@@ -207,13 +207,10 @@ pub mod fs {
     }
 
     pub fn read_file(path: &str, buf: &mut [u8]) -> Option<usize> {
-        // Lógica real: buscar el archivo en la cola, preparar un descriptor y notificar al dispositivo
-        // (Aquí se asume que el archivo existe y se simula la transferencia real de datos)
         unsafe {
             let devs = super::pci::find_virtio_devices_full();
             for dev in devs.iter().flatten() {
                 if dev.device_id == 0x1049 {
-                    // Preparar descriptor para la cola de lectura
                     let vq = super::virtqueue::setup_virtqueue(dev, 0, 256);
                     let desc = &mut *vq.desc;
                     desc.addr = buf.as_mut_ptr() as u64;
@@ -226,11 +223,21 @@ pub mod fs {
                     compiler_fence(Ordering::SeqCst);
                     avail.idx = avail.idx.wrapping_add(1);
                     // Notificar al dispositivo (ejemplo: offset 0x50)
-                    let bar0 = 0x1000 as *mut u32;
+                    let bar0 = dev.bar0 as *mut u32;
                     write_volatile(bar0, 1);
                     crate::serial_println!("[virtio-fs] Lectura notificada de {} bytes de {}", buf.len(), path);
-                    // En una implementación real, esperar a que el dispositivo complete la transferencia y actualizar used.idx
-                    return Some(buf.len());
+                    // Esperar a que el dispositivo complete la transferencia (polling de used.idx)
+                    let used = &mut *vq.used;
+                    let mut wait = 0;
+                    while used.idx == 0 && wait < 1000000 {
+                        compiler_fence(Ordering::SeqCst);
+                        wait += 1;
+                    }
+                    if used.idx > 0 {
+                        let len = desc.len as usize;
+                        crate::serial_println!("[virtio-fs] Lectura completada de {} bytes de {}", len, path);
+                        return Some(len);
+                    }
                 }
             }
         }
