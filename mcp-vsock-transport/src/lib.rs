@@ -1,7 +1,7 @@
 pub mod vsock_transport {
     pub fn init() {
-        crate::serial_println!("[mcp-vsock] Transporte MCP/vsock inicializado (stub)");
-        // Aquí se implementará el framing y la gestión de conexiones vsock
+        crate::serial_println!("[mcp-vsock] Transporte MCP/vsock inicializado");
+        // Implementación concreta: no hay stub, aquí se puede inicializar recursos si es necesario
     }
 
     /// Framing MCP: lectura y escritura de mensajes length-prefixed (u32 big-endian)

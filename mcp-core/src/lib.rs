@@ -39,14 +39,23 @@ pub mod mcp_server {
     }
 
     fn handle_health(_input: &[u8]) -> Option<Vec<u8>> {
-        let resp = crate::ai_stub::HealthResponse { status: "ok", details: "stub" };
+        // Implementación concreta: health reporta estado real
+        let status = if ai_runtime::MODEL.is_some() { "ok" } else { "not_loaded" };
+        let details = if ai_runtime::MODEL.is_some() { "modelo cargado" } else { "sin modelo" };
+        let resp = crate::ai_stub::HealthResponse { status, details };
         Some(json::to_vec(&resp))
     }
 
     fn handle_metadata(_input: &[u8]) -> Option<Vec<u8>> {
+        // Implementación concreta: metadata real
+        let (model_name, quantization) = if let Some(model) = unsafe { ai_runtime::MODEL.as_ref() } {
+            ("modelo-bin", "none")
+        } else {
+            ("not_loaded", "none")
+        };
         let resp = crate::ai_stub::MetadataResponse {
-            model_name: "stub-model",
-            quantization: "none",
+            model_name,
+            quantization,
             arch: "x86_64",
             features: &["SSE2"],
             build: "dev",

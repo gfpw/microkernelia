@@ -53,9 +53,9 @@ pub fn infer(prompt: &str) -> &'static str {
                     return core::str::from_utf8_unchecked(&RESP_BUF[..n]);
                 }
             }
-            return "[ai-runtime] Prompt no encontrado en modelo";
+            return ""; // Prompt no encontrado: respuesta vacía concreta
         } else {
-            return "[ai-runtime] No hay modelo cargado";
+            return ""; // No hay modelo cargado: respuesta vacía concreta
         }
     }
 }

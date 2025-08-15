@@ -143,10 +143,3 @@ pub fn run_scheduler() -> ! {
         }
     }
 }
-
-// Ejemplo de tarea
-fn ejemplo_task() {
-    serial_println!("[task] Ejecutando tarea de ejemplo");
-    let respuesta = ai_runtime::infer_stub("Hola AI");
-    serial_println!("[task] Respuesta AI: {}", respuesta);
-}
