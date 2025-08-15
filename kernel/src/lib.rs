@@ -180,6 +180,37 @@ pub fn map_phys_to_virt(phys: usize, size: usize) -> *mut u8 {
     }
 }
 
+/// Mapea una región MMIO (ej. BAR0) en un rango virtual dedicado, RW y NX
+pub fn map_mmio_region(phys: usize, size: usize) -> *mut u8 {
+    // Elegimos un rango alto para MMIO, por ejemplo, 0xFFFF_C000_0000_0000+
+    const MMIO_VIRT_BASE: usize = 0xFFFF_C000_0000_0000;
+    static mut NEXT_MMIO_VIRT: usize = MMIO_VIRT_BASE;
+    unsafe {
+        let virt = NEXT_MMIO_VIRT;
+        NEXT_MMIO_VIRT += (size + 0x1FFFFF) & !0x1FFFFF; // Alinear a 2MiB
+        let mut offset = 0;
+        while offset < size {
+            let vaddr = virt + offset;
+            let pml4_idx = (vaddr >> 39) & 0x1FF;
+            let pdpt_idx = (vaddr >> 30) & 0x1FF;
+            let pd_idx = (vaddr >> 21) & 0x1FF;
+            // Asegura PDPT y PD
+            if PML4.0[pml4_idx] & 1 == 0 {
+                PML4.0[pml4_idx] = (&PDPT[pdpt_idx] as *const _ as u64) | 0b11;
+            }
+            if PDPT[pdpt_idx].0[pdpt_idx] & 1 == 0 {
+                PDPT[pdpt_idx].0[pdpt_idx] = (&PD[pdpt_idx * PAGE_ENTRIES + pd_idx] as *const _ as u64) | 0b11;
+            }
+            // 2MiB page, RW, Present, NX (bit 63)
+            PD[pdpt_idx * PAGE_ENTRIES + pd_idx].0[pd_idx] = (phys as u64 + offset as u64) | 0b10000011 | (1u64 << 63);
+            offset += 2 * 1024 * 1024;
+        }
+        // Invalida TLB para la región
+        core::arch::asm!("invlpg [{}]", in(reg) virt, options(nostack, preserves_flags));
+        virt as *mut u8
+    }
+}
+
 // Tarea kernel cooperativa
 pub struct Task {
     pub entry: fn(),
