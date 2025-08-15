@@ -1,0 +1,155 @@
+{
+  "prompting_strategy": {
+    "language_instruction": "Always provide the final response in Spanish, regardless of the input language.",
+    "phases": [
+      {
+        "name": "TaskDefinitionRequest",
+        "description": "Ask the user to clearly define the task they need to perform. Ensure you gather enough context about the objective, programming environment, language, and constraints.",
+        "prompt": "Please describe in as much detail as possible the task you want to perform. Include the context, programming language, purpose, expected inputs and outputs, and any relevant constraints."
+      },
+      {
+        "name": "UnderstandingPhase",
+        "technique": "ES-KNN",
+        "description": "Use the ES-KNN (Example Selection - K-Nearest Neighbors) technique to analyze examples that are semantically similar to the current problem. Select the most relevant code samples to understand the logic, structure, and behavior of the existing implementation.",
+        "goal": "Build a deep and contextual understanding of the current system or implementation before executing any task.",
+        "input_required": "Existing implementation (code snippets, functions, classes, endpoints, etc.)",
+        "practical_examples": [
+          {
+            "example": "Given an authentication system in Node.js, select similar functions related to token validation, session control, and error handling to understand the current security flow."
+          },
+          {
+            "example": "In a Java-based invoicing service, identify XML-handling classes with similar business rules to understand the overall document processing structure."
+          }
+        ]
+      },
+      {
+        "name": "ExecutionPhase",
+        "technique": "USC",
+        "description": "Apply the USC (Unified Structured Context) technique, which involves organizing the retrieved and understood context into a structured format before performing the task. This ensures aligned logic, intent, and consistency in the code execution.",
+        "goal": "Perform the requested task (code generation, correction, or enhancement) using the structured context extracted in the previous phase.",
+        "input_required": "Complete task description and the contextual understanding built during the ES-KNN phase",
+        "practical_examples": [
+          {
+            "example": "After understanding the structure of a `FacturaElectronica` class, generate a new `NotaCreditoElectronica` class with equivalent structure and adapted business logic."
+          },
+          {
+            "example": "After analyzing an existing `/api/user/login` endpoint, implement a new `/api/user/logout` endpoint that maintains coherence with the authentication logic."
+          }
+        ]
+      }
+    ],
+    "prompting_techniques": {
+      "understanding_techniques": [
+        {
+          "name": "ES-KNN (Exemplar Selection + KNN)",
+          "description": "Recupera desde una base de ejemplos los más similares y los usa como contexto para entender mejor el problema actual.",
+          "analogy": "Como consultar manuales de código previos que son muy parecidos al problema actual.",
+          "prompt_template": "Aquí hay ejemplos similares extraídos por similitud:\nEjemplo A: {ejemplo_a}\nEjemplo B: {ejemplo_b}\nAhora analiza estos ejemplos para entender mejor el problema actual: {problema_actual}",
+          "workflow": "consulta base de ejemplos → prompt incluye esos ejemplos → comprensión profunda"
+        },
+        {
+          "name": "Step-Back Prompting",
+          "description": "Primero pide una vista general o resumen antes de entrar en detalle.",
+          "analogy": "Ver el plano general de una casa antes de diseñar cada habitación.",
+          "prompt_template": "Primero: explica en 2 frases cómo funciona {concepto_general}.\nDespués: analiza en detalle cómo aplicar esto a {problema_específico}.",
+          "workflow": "vista general → comprensión detallada → aplicación específica"
+        },
+        {
+          "name": "Self-Ask",
+          "description": "El modelo plantea preguntas aclaratorias antes de responder.",
+          "analogy": "Un detective que se formula preguntas intermedias para entender mejor el caso.",
+          "prompt_template": "Problema: {problema}\nFormula preguntas relevantes sobre este problema antes de intentar resolverlo:\n1. ¿...?\n2. ¿...?\nResponde a estas preguntas para entender mejor el problema.",
+          "workflow": "problema → preguntas aclaratorias → respuestas → comprensión profunda"
+        }
+      ],
+      "execution_techniques": [
+        {
+          "name": "Universal Self-Consistency (USC)",
+          "description": "Ejecuta múltiples cadenas de pensamiento y toma la respuesta más común o más coherente.",
+          "analogy": "Un jurado donde varios miembros llegan a una decisión, votando la más popular.",
+          "prompt_template": "Razona tres veces de forma independiente sobre cómo resolver {problema}.\n\nEnfoque 1: ...\nEnfoque 2: ...\nEnfoque 3: ...\n\nAhora elige el enfoque más coherente y desarrolla la solución final.",
+          "workflow": "múltiples razonamientos → comparación → solución coherente"
+        },
+        {
+          "name": "Tree-of-Thought",
+          "description": "Explora múltiples caminos de razonamiento tipo árbol antes de decidir.",
+          "analogy": "Ajedrez: se exploran varias jugadas futuras antes de elegir la mejor.",
+          "prompt_template": "Para resolver {problema}, exploremos diferentes enfoques:\n\nOpción A: {enfoque_a}\n- Ventajas: ...\n- Desventajas: ...\n\nOpción B: {enfoque_b}\n- Ventajas: ...\n- Desventajas: ...\n\nEvalúa ambas opciones y desarrolla la solución óptima.",
+          "workflow": "exploración de opciones → evaluación → selección → implementación"
+        },
+        {
+          "name": "Few-Shot Contrastive CoT",
+          "description": "Presenta ejemplos contrastivos (uno correcto, otro incorrecto), luego pide razonamiento paso a paso para decidir en el nuevo caso.",
+          "analogy": "Como comparar dos recetas de cocina: una bien hecha y otra mal hecha, antes de hacer la nuestra.",
+          "prompt_template": "Ejemplo positivo:\n{ejemplo_correcto}\n\nEjemplo negativo:\n{ejemplo_incorrecto}\n\nNuevo problema: {problema_actual}\n\nRazona paso a paso, comparando con los ejemplos anteriores, y luego desarrolla la solución.",
+          "workflow": "ejemplos contrastivos → razonamiento comparativo → solución correcta"
+        },
+        {
+          "name": "Self-Refine",
+          "description": "Genera una respuesta, pide retroalimentación y la mejora iterativamente.",
+          "analogy": "Como pulir un borrador varias veces hasta que quede impecable.",
+          "prompt_template": "Primera versión de la solución para {problema}:\n{solución_inicial}\n\nAhora revisa tu propia respuesta y mejórala:\n{solución_mejorada}\n\nRevisa una vez más para asegurar calidad:",
+          "workflow": "solución inicial → revisión crítica → mejora → solución final"
+        }
+      ],
+      "style_techniques": [
+        {
+          "name": "Role Prompting",
+          "description": "Asigna al modelo un rol específico (experto, senior developer, architect).",
+          "analogy": "Actúa como profesor universitario evaluando código o arquitecto de software diseñando una solución.",
+          "prompt_template": "Eres un {rol_experto}. {tarea_específica}",
+          "workflow": "adopción de rol → ejecución desde esa perspectiva"
+        },
+        {
+          "name": "Style Prompting",
+          "description": "Define estilo o tono de la respuesta (técnico, conciso, didáctico).",
+          "analogy": "Como pedir un informe formal o un tutorial paso a paso.",
+          "prompt_template": "En estilo {estilo_específico}, desarrolla {tarea}.",
+          "workflow": "definición de estilo → generación adaptada al estilo"
+        }
+      ]
+    },
+    "integration_examples": [
+      {
+        "name": "Comprensión y generación de una nueva clase",
+        "description": "Proceso para entender una clase existente y generar una nueva basada en ella",
+        "phases": [
+          {
+            "phase": "TaskDefinitionRequest",
+            "prompt": "Necesito crear una nueva clase llamada `NotaDébitoElectrónica` basada en la estructura y funcionalidad de la clase `FacturaElectrónica` existente. La nueva clase debe mantener la misma estructura pero adaptar la lógica para notas de débito."
+          },
+          {
+            "phase": "UnderstandingPhase",
+            "technique": "ES-KNN",
+            "prompt": "Aquí está el código de la clase `FacturaElectrónica`:\n```csharp\npublic class FacturaElectrónica {\n    // ... código existente\n}\n```\n\nAnaliza la estructura, propiedades, métodos y lógica de negocio de esta clase para entender cómo implementar la nueva clase `NotaDébitoElectrónica`."
+          },
+          {
+            "phase": "ExecutionPhase",
+            "technique": "USC + Self-Refine",
+            "prompt": "Basándote en tu análisis de la clase `FacturaElectrónica`, genera la nueva clase `NotaDébitoElectrónica` que mantenga la misma estructura pero adapte la lógica para notas de débito.\n\nLuego revisa tu implementación para asegurar coherencia con la clase original y realiza las mejoras necesarias."
+          }
+        ]
+      },
+      {
+        "name": "Debugging y corrección de código",
+        "description": "Proceso para entender y corregir errores en código existente",
+        "phases": [
+          {
+            "phase": "TaskDefinitionRequest",
+            "prompt": "Tengo un error en mi método `ProcesarPagos()` que no está calculando correctamente los impuestos para ciertos tipos de transacciones. Necesito entender por qué ocurre y corregirlo."
+          },
+          {
+            "phase": "UnderstandingPhase",
+            "technique": "Self-Ask + Step-Back",
+            "prompt": "Aquí está el código con error:\n```csharp\npublic void ProcesarPagos() {\n    // ... código con error\n}\n```\n\nFormula preguntas relevantes para entender el problema:\n1. ¿Qué tipos de transacciones no se calculan correctamente?\n2. ¿Cuál es la fórmula esperada para cada tipo?\n3. ¿Hay casos especiales no considerados?\n\nLuego da un paso atrás y explica el propósito general del método antes de analizar el error específico."
+          },
+          {
+            "phase": "ExecutionPhase",
+            "technique": "Tree-of-Thought + Few-Shot Contrastive CoT",
+            "prompt": "Basándote en tu análisis, explora diferentes soluciones al problema:\n\nOpción A: Corregir la fórmula actual\n- Ventajas: ...\n- Desventajas: ...\n\nOpción B: Restructurar la lógica por tipo de transacción\n- Ventajas: ...\n- Desventajas: ...\n\nEvalúa ambas opciones y desarrolla la solución óptima, comparando con ejemplos correctos e incorrectos de implementación."
+          }
+        ]
+      }
+    ]
+  }
+}

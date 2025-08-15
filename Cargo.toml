@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "kernel",
+    "drivers-virtio",
+    "mcp-core",
+    "mcp-vsock-transport",
+    "ai-runtime",
+    "logging",
+    "xtask",
+    "tools/mcp-cli"
+]
+
+resolver = "2"
