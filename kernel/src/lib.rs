@@ -239,6 +239,22 @@ pub fn mmu_protect_sections(text_start: usize, text_end: usize, data_start: usiz
     }
 }
 
+/// Inserta una guard page (no mapeada) al final de cada stack
+pub fn mmu_insert_guard_page(stack_end: usize) {
+    unsafe {
+        let pml4_idx = (stack_end >> 39) & 0x1FF;
+        let pdpt_idx = (stack_end >> 30) & 0x1FF;
+        let pd_idx = (stack_end >> 21) & 0x1FF;
+        let pt_idx = (stack_end >> 12) & 0x1FF;
+        // Asume que existe una tabla PT para este PD
+        let pt_base = &mut PD[pdpt_idx * PAGE_ENTRIES + pd_idx] as *mut _ as *mut PageTable;
+        let pt = &mut (*pt_base).0;
+        pt[pt_idx] = 0; // No Present: guard page
+        // Invalida TLB para la página
+        core::arch::asm!("invlpg [{}]", in(reg) stack_end, options(nostack, preserves_flags));
+    }
+}
+
 // Tarea kernel cooperativa
 pub struct Task {
     pub entry: fn(),
