@@ -1,6 +1,7 @@
 pub mod mcp_server {
     use core::sync::atomic::{AtomicBool, Ordering};
     use miniserde::json;
+    use crate::ai_runtime;
 
     static READY: AtomicBool = AtomicBool::new(false);
 
@@ -26,9 +27,10 @@ pub mod mcp_server {
 
     fn handle_infer(input: &[u8]) -> Option<Vec<u8>> {
         let req = crate::ai_stub::parse_infer_req(input)?;
+        let ai_result = ai_runtime::infer_stub(req.prompt);
         let resp = crate::ai_stub::InferResponse {
-            text: "[ai] Respuesta de ejemplo",
-            tokens: 3,
+            text: ai_result,
+            tokens: ai_result.split_whitespace().count() as u32,
             latency_ms: 1,
         };
         Some(json::to_vec(&resp))
