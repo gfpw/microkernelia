@@ -1,5 +1,16 @@
+#![no_std]
+
+#[macro_use]
+extern crate logging;
+
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{compiler_fence, Ordering};
+use crate::pci::map_bar0_phys_to_virt;
+
+// FFI boundary for kernel memory allocation
+extern "Rust" {
+    fn alloc_frame();
+}
 
 #[repr(C, align(16))]
 pub struct VirtqDesc {
@@ -30,6 +41,9 @@ pub struct VirtqUsed {
 }
 
 pub mod pci {
+    use crate::alloc_frame;
+    use core::ptr::{read_volatile, write_volatile};
+
     const PCI_CONFIG_ADDRESS: u32 = 0xCF8;
     const PCI_CONFIG_DATA: u32 = 0xCFC;
 
@@ -60,7 +74,14 @@ pub mod pci {
                 let vendor = read_config(bus, slot, 0, 0) & 0xFFFF;
                 if vendor == 0x1AF4 {
                     let device = (read_config(bus, slot, 0, 2) >> 16) & 0xFFFF;
-                    crate::serial_println!("[virtio-pci] Encontrado dispositivo virtio: bus {} slot {} device {:04x}", bus, slot, device);
+                    let device = device as u16;
+                    let log_bus = bus;
+                    let log_slot = slot;
+                    let log_device = device;
+                    serial_println!(
+                        "[virtio-pci] Encontrado dispositivo virtio: bus {} slot {} device {:04x}",
+                        log_bus, log_slot, log_device
+                    );
                 }
             }
         }
@@ -69,21 +90,30 @@ pub mod pci {
     pub fn find_virtio_devices_full() -> [Option<VirtioDevice>; 8] {
         let mut found: [Option<VirtioDevice>; 8] = [None, None, None, None, None, None, None, None];
         let mut idx = 0;
+        let mut logs = [None; 8];
         for bus in 0..1 {
             for slot in 0..32 {
                 let vendor = read_config(bus, slot, 0, 0) & 0xFFFF;
                 if vendor == 0x1AF4 {
                     let device = (read_config(bus, slot, 0, 2) >> 16) & 0xFFFF;
+                    let device = device as u16;
                     let bar0 = read_config(bus, slot, 0, 0x10);
-                    crate::serial_println!("[virtio-pci] Dispositivo virtio: bus {} slot {} dev {:04x} bar0 {:08x}", bus, slot, device, bar0);
                     if idx < found.len() {
                         found[idx] = Some(VirtioDevice {
-                            bus, slot, func: 0, device_id: device as u16, bar0
+                            bus, slot, func: 0, device_id: device, bar0
                         });
+                        logs[idx] = Some((bus, slot, device, bar0));
                         idx += 1;
                     }
                 }
             }
+        }
+        for log in logs.iter().flatten() {
+            let (log_bus, log_slot, log_device, log_bar0) = *log;
+            serial_println!(
+                "[virtio-pci] Dispositivo virtio: bus {} slot {} dev {:04x} bar0 {:08x}",
+                log_bus, log_slot, log_device, log_bar0
+            );
         }
         found
     }
@@ -98,12 +128,11 @@ pub mod pci {
     }
 
     pub fn map_bar0_phys_to_virt(bar0_phys: u32, size: usize) -> *mut u8 {
-        // Implementación concretamente funcional: reserva frames y llama a map_phys_to_virt del kernel
         let start = bar0_phys as usize & !(2 * 1024 * 1024 - 1);
         let end = (bar0_phys as usize + size + 2 * 1024 * 1024 - 1) & !(2 * 1024 * 1024 - 1);
         let mut addr = start;
         while addr < end {
-            let _ = crate::kernel::alloc_frame();
+            unsafe { alloc_frame(); }
             addr += 2 * 1024 * 1024;
         }
         extern "Rust" { fn map_phys_to_virt(phys: usize, size: usize) -> *mut u8; }
@@ -112,9 +141,7 @@ pub mod pci {
 }
 
 pub mod virtqueue {
-    use super::{VirtqDesc, VirtqAvail, VirtqUsed, VirtqUsedElem};
-    use crate::pci::map_bar0_phys_to_virt;
-    use crate::serial_println;
+    use super::{VirtqDesc, VirtqAvail, VirtqUsed};
 
     pub struct VirtQueue {
         pub desc: *mut VirtqDesc,
@@ -123,41 +150,43 @@ pub mod virtqueue {
         pub size: u16,
     }
 
-    pub fn setup_virtqueue(dev: &super::pci::VirtioDevice, queue_idx: u16, queue_size: u16) -> VirtQueue {
-        // Asignar memoria alineada para desc/avail/used usando el allocador del kernel
-        // Aquí se asume que existe una función alloc_aligned(size, align) -> *mut u8
+    pub fn setup_virtqueue(_dev: &super::pci::VirtioDevice, _queue_idx: u16, queue_size: u16) -> VirtQueue {
         extern "Rust" {
             fn alloc_aligned(size: usize, align: usize) -> *mut u8;
         }
         let desc_ptr = unsafe { alloc_aligned(core::mem::size_of::<VirtqDesc>() * queue_size as usize, 16) } as *mut VirtqDesc;
         let avail_ptr = unsafe { alloc_aligned(core::mem::size_of::<super::VirtqAvail>(), 2) } as *mut super::VirtqAvail;
         let used_ptr = unsafe { alloc_aligned(core::mem::size_of::<super::VirtqUsed>(), 4) } as *mut super::VirtqUsed;
-        serial_println!("[virtqueue] setup_virtqueue: desc={:p} avail={:p} used={:p}", desc_ptr, avail_ptr, used_ptr);
-        VirtQueue {
+        let log_desc = desc_ptr;
+        let log_avail = avail_ptr;
+        let log_used = used_ptr;
+        let vq = VirtQueue {
             desc: desc_ptr,
             avail: avail_ptr,
             used: used_ptr,
             size: queue_size,
-        }
+        };
+        serial_println!("[virtqueue] setup_virtqueue: desc={:p} avail={:p} used={:p}", log_desc, log_avail, log_used);
+        vq
     }
 }
 
 pub mod vsock {
     use super::virtqueue::VirtQueue;
-    use crate::pci::map_bar0_phys_to_virt;
-    use crate::serial_println;
     use core::ptr::write_volatile;
     use core::sync::atomic::{compiler_fence, Ordering};
+    use crate::pci::map_bar0_phys_to_virt;
 
     static mut VSOCK_TX: Option<VirtQueue> = None;
     static mut VSOCK_RX: Option<VirtQueue> = None;
     static mut VSOCK_BAR0: Option<*mut u8> = None;
 
     pub fn init() {
-        serial_println!("[virtio-vsock] Inicializando driver vsock");
+        let mut found_vsock = false;
         let devs = super::pci::find_virtio_devices_full();
         for dev in devs.iter().flatten() {
-            if dev.device_id == 0x1040 || dev.device_id == 0x105A {
+            let is_vsock = dev.device_id == 0x1040 || dev.device_id == 0x105A;
+            if is_vsock {
                 super::pci::enable_bus_master(dev.bus, dev.slot);
                 let bar0_virt = map_bar0_phys_to_virt(dev.bar0 & 0xFFFF_FFF0, 0x1000);
                 let tx = super::virtqueue::setup_virtqueue(dev, 0, 256);
@@ -167,16 +196,21 @@ pub mod vsock {
                     VSOCK_RX = Some(rx);
                     VSOCK_BAR0 = Some(bar0_virt);
                 }
+                found_vsock = true;
             }
+        }
+        if found_vsock {
+            serial_println!("[virtio-vsock] Inicializando driver vsock");
         }
     }
 
     pub fn send(data: &[u8]) -> bool {
-        unsafe {
+        let len = data.len();
+        let result = unsafe {
             if let (Some(ref mut tx), Some(bar0)) = (VSOCK_TX.as_mut(), VSOCK_BAR0) {
                 let desc = &mut *tx.desc;
                 desc.addr = data.as_ptr() as u64;
-                desc.len = data.len() as u32;
+                desc.len = len as u32;
                 desc.flags = 0;
                 desc.next = 0;
                 let avail = &mut *tx.avail;
@@ -184,17 +218,22 @@ pub mod vsock {
                 avail.ring[idx] = 0;
                 compiler_fence(Ordering::SeqCst);
                 avail.idx = avail.idx.wrapping_add(1);
-                // Notificar al dispositivo usando el BAR0 real (offset 0x50)
                 let notify_reg = bar0.add(0x50) as *mut u32;
                 write_volatile(notify_reg, 1);
-                serial_println!("[virtio-vsock] TX notificado: {} bytes", data.len());
-                return true;
+                true
+            } else {
+                false
             }
+        };
+        if result {
+            serial_println!("[virtio-vsock] TX notificado: {} bytes", len);
         }
-        false
+        result
     }
 
     pub fn recv(buf: &mut [u8]) -> Option<usize> {
+        let mut result = None;
+        let mut log_len = None;
         unsafe {
             if let Some(ref mut rx) = VSOCK_RX {
                 let used = &mut *rx.used;
@@ -206,34 +245,42 @@ pub mod vsock {
                         for i in 0..len { buf[i] = *src.add(i); }
                         used.idx -= 1;
                         compiler_fence(Ordering::SeqCst);
-                        serial_println!("[virtio-vsock] RX consumido: {} bytes", len);
-                        return Some(len);
+                        log_len = Some(len);
+                        result = Some(len);
                     }
                 }
             }
         }
-        None
+        if let Some(len) = log_len {
+            serial_println!("[virtio-vsock] RX consumido: {} bytes", len);
+        }
+        result
     }
 }
 
 pub mod fs {
-    use crate::pci::map_bar0_phys_to_virt;
-    use crate::serial_println;
     use core::ptr::write_volatile;
     use core::sync::atomic::{compiler_fence, Ordering};
+    use crate::pci::map_bar0_phys_to_virt;
 
     pub fn init() {
-        serial_println!("[virtio-fs] Inicializando driver virtio-fs");
+        let mut found_fs = false;
         let devs = super::pci::find_virtio_devices_full();
         for dev in devs.iter().flatten() {
             if dev.device_id == 0x1049 {
                 super::pci::enable_bus_master(dev.bus, dev.slot);
                 let _vq = super::virtqueue::setup_virtqueue(dev, 0, 256);
+                found_fs = true;
             }
+        }
+        if found_fs {
+            serial_println!("[virtio-fs] Inicializando driver virtio-fs");
         }
     }
 
     pub fn read_file(path: &str, buf: &mut [u8]) -> Option<usize> {
+        let mut result = None;
+        let mut log: Option<(usize, &str, usize)> = None;
         unsafe {
             let devs = super::pci::find_virtio_devices_full();
             for dev in devs.iter().flatten() {
@@ -249,12 +296,9 @@ pub mod fs {
                     avail.ring[idx] = 0;
                     compiler_fence(Ordering::SeqCst);
                     avail.idx = avail.idx.wrapping_add(1);
-                    // Notificar al dispositivo usando el BAR0 real (offset 0x50)
                     let bar0_virt = map_bar0_phys_to_virt(dev.bar0 & 0xFFFF_FFF0, 0x1000);
                     let notify_reg = bar0_virt.add(0x50) as *mut u32;
                     write_volatile(notify_reg, 1);
-                    serial_println!("[virtio-fs] Lectura notificada de {} bytes de {}", buf.len(), path);
-                    // Esperar a que el dispositivo complete la transferencia (polling de used.idx)
                     let used = &mut *vq.used;
                     let mut wait = 0;
                     while used.idx == 0 && wait < 1000000 {
@@ -263,12 +307,19 @@ pub mod fs {
                     }
                     if used.idx > 0 {
                         let len = desc.len as usize;
-                        serial_println!("[virtio-fs] Lectura completada de {} bytes de {}", len, path);
-                        return Some(len);
+                        let log_len = buf.len();
+                        let log_path = path;
+                        let log_done = len;
+                        log = Some((log_len, log_path, log_done));
+                        result = Some(len);
                     }
                 }
             }
         }
-        None
+        if let Some((log_len, log_path, log_done)) = log {
+            serial_println!("[virtio-fs] Lectura notificada de {} bytes de {}", log_len, log_path);
+            serial_println!("[virtio-fs] Lectura completada de {} bytes de {}", log_done, log_path);
+        }
+        result
     }
 }

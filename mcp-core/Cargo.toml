@@ -7,3 +7,6 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
+ai-runtime = { path = "../ai-runtime" }
+mcp-vsock-transport = { path = "../mcp-vsock-transport" }
+logging = { path = "../logging" }

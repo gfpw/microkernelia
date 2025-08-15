@@ -1,3 +1,5 @@
+#![no_std]
+
 use drivers_virtio::fs;
 
 pub struct Model {
@@ -58,4 +60,9 @@ pub fn infer(prompt: &str) -> &'static str {
             return ""; // No hay modelo cargado: respuesta vacía concreta
         }
     }
+}
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
 }

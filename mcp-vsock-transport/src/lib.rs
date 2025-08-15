@@ -1,3 +1,5 @@
+#![no_std]
+
 pub mod vsock_transport {
     pub fn init() {
         crate::serial_println!("[mcp-vsock] Transporte MCP/vsock inicializado");
@@ -34,4 +36,9 @@ pub mod vsock_transport {
         out[4..4+json.len()].copy_from_slice(json);
         Some(&out[..json.len()+4])
     }
+}
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
 }

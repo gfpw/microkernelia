@@ -7,3 +7,8 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
+drivers-virtio = { path = "../drivers-virtio" }
+mcp-core = { path = "../mcp-core" }
+mcp-vsock-transport = { path = "../mcp-vsock-transport" }
+ai-runtime = { path = "../ai-runtime" }
+logging = { path = "../logging" }

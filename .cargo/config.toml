@@ -1,9 +1,7 @@
 [build]
-target = "x86_64-unknown-none"
 rustflags = [
     "-C", "link-arg=-Tkernel/linker.ld",
     "-C", "panic=abort",
-    "-C", "lto=fat",
     "-C", "codegen-units=1",
     "-C", "target-cpu=native"
 ]
