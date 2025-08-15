@@ -124,10 +124,11 @@ const KERNEL_VIRT_BASE: usize = 0xFFFF_8000_0000_0000;
 /// Inicializa la MMU con mapeo identidad temporal y mapeo alto para el kernel
 pub fn mmu_init() {
     unsafe {
-        // Mapeo identidad (temporal, solo para arranque)
-        PML4.0[0] = (&PDPT[0] as *const _ as u64) | 0b11;
+        // No mapear la página cero (0x0) para atrapar accesos nulos
+        PML4.0[0] = 0;
+        // Mapeo identidad (temporal, solo para arranque, excepto página cero)
         PDPT[0].0[0] = (&PD[0] as *const _ as u64) | 0b11;
-        for i in 0..PAGE_ENTRIES {
+        for i in 1..PAGE_ENTRIES {
             PD[0].0[i] = ((i as u64) << 21) | 0b10000011;
         }
         // Mapeo alto para el kernel
