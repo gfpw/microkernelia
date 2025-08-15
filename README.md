@@ -1,42 +1,52 @@
-# Unikernel-AI: Workspace
+# microkernelia
 
-Este workspace contiene la estructura base para el desarrollo de un unikernel Rust (no_std) con motor de inferencia AI y servidor MCP sobre virtio-vsock.
+[![Repo en GitHub](https://img.shields.io/badge/github-gfpw%2Fmicrokernelia-blue?logo=github)](https://github.com/gfpw/microkernelia)
 
-## Estructura de crates
+Unikernel Rust no_std orientado a AI y servidores MCP sobre virtio-vsock.
 
-- kernel/
-- drivers-virtio/
-- mcp-core/
-- mcp-vsock-transport/
-- ai-runtime/
-- logging/
-- xtask/
-- tools/mcp-cli/
+---
 
-## Próximos pasos
+**Autor:** Germán Ferreyra  
+**Paradigma:** Vibe coding (desarrollo iterativo, colaborativo y experimental, priorizando el flow y la creatividad técnica)  
+**Herramientas:** Rust nightly, QEMU, Firecracker, LLVM/Clang/LLD, Powershell, WSL, GitHub, GitHub Copilot (asistente de IA para refactorización, debugging y documentación)
 
-- [x] Inicializar cada crate con su respectivo Cargo.toml y archivo fuente principal.
-- [x] Configurar el workspace en Cargo.toml raíz.
-- [x] Añadir scripts de build y documentación.
-- [x] Implementar kernel mínimo: entrypoint, panic handler, logging serial, linker script.
-- [x] Comando de build reproducible vía xtask.
-- [ ] Inicializar memoria y scheduler cooperativo.
-- [ ] Integrar drivers virtio (vsock, fs).
-- [ ] Implementar stub MCP y AI runtime.
-- [ ] Pruebas de integración y documentación avanzada.
+---
 
-## Protección de memoria y robustez de stack
+## Estructura del proyecto
 
-El kernel implementa:
-- MMU x86_64 con mapeo alto, protección RX/NX, guard pages y canarios de stack.
-- Pruebas automáticas al arrancar: detección de corrupción de stack y protección de guard page.
-- Los resultados se reportan por log serial y pueden consultarse vía MCP logs.
+- [`kernel/`](./kernel): Núcleo Rust no_std, memoria, scheduler, logging serial
+- [`drivers-virtio/`](./drivers-virtio): Drivers virtio (vsock, fs, block opcional)
+- [`mcp-core/`](./mcp-core): Tipos y lógica MCP (JSON-RPC, framing, schemas)
+- [`mcp-vsock-transport/`](./mcp-vsock-transport): Transporte MCP sobre virtio-vsock
+- [`ai-runtime/`](./ai-runtime): Motor de inferencia AI (stub inicial, integración futura)
+- [`logging/`](./logging): Buffer de logs y métricas
+- [`xtask/`](./xtask): Herramientas de build, imagen y microVM
+- [`tools/mcp-cli/`](./tools/mcp-cli): CLI host-side para pruebas MCP
 
-### Ejemplo de log de prueba
-```
-[test] Verificando canario de stack...
-[test] Canario OK antes de corrupción
-[test] Canario detectó corrupción correctamente
+## Documentación
+
+- [Arquitectura y detalles técnicos](./ARCHITECTURE.md)
+- [Guía de build y requisitos](./BUILD.md)
+
+## Build rápido
+
+```powershell
+rustup target add x86_64-unknown-none
+cargo build --workspace --release
 ```
 
-Para probar la protección de guard page, descomentar la línea correspondiente en el arranque del kernel (ver `kernel/src/lib.rs`).
+Para más detalles, ver [BUILD.md](./BUILD.md).
+
+## Estado y roadmap
+
+- [x] Scaffold inicial y crates
+- [x] Kernel mínimo y logging serial
+- [x] Drivers virtio básicos
+- [ ] Integración AI runtime
+- [ ] Pruebas de integración y documentación avanzada
+
+---
+
+Repositorio oficial: https://github.com/gfpw/microkernelia
+
+> Consulta [ARCHITECTURE.md](./ARCHITECTURE.md) y [BUILD.md](./BUILD.md) para detalles técnicos y de compilación.
