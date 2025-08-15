@@ -118,16 +118,24 @@ static mut PML4: PageTable = PageTable([0; PAGE_ENTRIES]);
 static mut PDPT: [PageTable; PAGE_ENTRIES] = [PageTable([0; PAGE_ENTRIES]); PAGE_ENTRIES];
 static mut PD: [PageTable; PAGE_ENTRIES * PAGE_ENTRIES] = [PageTable([0; PAGE_ENTRIES]); PAGE_ENTRIES * PAGE_ENTRIES];
 
-/// Inicializa la MMU con mapeo identidad para el kernel (2MiB hugepages y 4KiB para regiones pequeñas)
+// Dirección base alta para el kernel (por ejemplo, 0xFFFF_8000_0000_0000)
+const KERNEL_VIRT_BASE: usize = 0xFFFF_8000_0000_0000;
+
+/// Inicializa la MMU con mapeo identidad temporal y mapeo alto para el kernel
 pub fn mmu_init() {
     unsafe {
-        // PML4[0] -> PDPT[0]
+        // Mapeo identidad (temporal, solo para arranque)
         PML4.0[0] = (&PDPT[0] as *const _ as u64) | 0b11;
-        // PDPT[0] -> PD[0]
         PDPT[0].0[0] = (&PD[0] as *const _ as u64) | 0b11;
-        // PD[0]: mapeo identidad 2MiB para los primeros 512*2MiB = 1GiB
         for i in 0..PAGE_ENTRIES {
-            PD[0].0[i] = ((i as u64) << 21) | 0b10000011; // 2MiB page, RW, Present
+            PD[0].0[i] = ((i as u64) << 21) | 0b10000011;
+        }
+        // Mapeo alto para el kernel
+        let pml4_idx = (KERNEL_VIRT_BASE >> 39) & 0x1FF;
+        PML4.0[pml4_idx] = (&PDPT[1] as *const _ as u64) | 0b11;
+        PDPT[1].0[0] = (&PD[1] as *const _ as u64) | 0b11;
+        for i in 0..PAGE_ENTRIES {
+            PD[1].0[i] = ((i as u64) << 21) | 0b10000011;
         }
         // Cargar CR3
         let pml4_phys = &PML4 as *const _ as u64;
