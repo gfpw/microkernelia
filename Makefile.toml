@@ -1,13 +1,23 @@
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 
-[tasks.build-all]
-description = "Compila todo el workspace en release"
+[tasks.build-kernel]
+description = "Compila solo crates no_std para x86_64-unknown-none"
 command = "cargo"
-args = ["build", "--workspace", "--release"]
+args = ["build", "-p", "kernel", "-p", "drivers_virtio", "-p", "logging", "-p", "mcp_core", "-p", "ai_runtime", "-p", "mcp_vsock_transport", "--release", "--target", "x86_64-unknown-none"]
+
+[tasks.build-tools]
+description = "Compila herramientas de usuario para el host (xtask, mcp-cli)"
+command = "cargo"
+args = ["build", "-p", "xtask", "-p", "mcp-cli", "--release"]
+
+[tasks.build-all]
+description = "Compila kernel y herramientas (no_std y std)"
+dependencies = ["build-kernel", "build-tools"]
 
 [tasks.image]
 description = "Genera imagen de microVM (requiere xtask)"
+dependencies = ["build-kernel", "build-tools"]
 command = "cargo"
 args = ["run", "-p", "xtask", "--", "image"]
 
@@ -20,3 +30,21 @@ args = ["run", "-p", "xtask", "--", "qemu"]
 description = "Lanza Firecracker con la imagen"
 command = "cargo"
 args = ["run", "-p", "xtask", "--", "firecracker"]
+
+[tasks.default]
+description = "Build por defecto: kernel y herramientas"
+dependencies = ["build-all"]
+
+[tasks.link-elf]
+description = "Enlaza el kernel ELF incluyendo todas las dependencias"
+dependencies = ["build-kernel"]
+script = [
+    "echo \"Workspace root: $CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY\"",
+    "ld.lld -T ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/kernel/link.ld -o ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/kernel.elf \\",
+    "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/libkernel.a \\",
+    "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/libdrivers_virtio.rlib \\",
+    "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/libai_runtime.rlib \\",
+    "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/libmcp_vsock_transport.rlib \\",
+    "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/liblogging.rlib \\",
+    "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/libmcp_core.rlib"
+]

@@ -206,7 +206,8 @@ pub fn mmu_init() {
 }
 
 /// Mapea una región física a virtual (soporta 4KiB y 2MiB, RW, Present)
-pub fn map_phys_to_virt(phys: usize, size: usize) -> *mut u8 {
+#[no_mangle]
+pub extern "Rust" fn map_phys_to_virt(phys: usize, size: usize) -> *mut u8 {
     unsafe {
         let mut offset = 0;
         while offset < size {
