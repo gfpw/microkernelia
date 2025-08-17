@@ -75,6 +75,13 @@ cargo make build-all
 - [x] Integración AI runtime
 - [ ] Pruebas de integración y documentación avanzada
 
+## Próximos pasos
+
+- Integrar Limine como bootloader moderno (automatización de imagen ISO, arranque con Limine, soporte multiboot2 y UEFI)
+- Añadir un shell/intérprete minimalista para interacción y pruebas en el entorno bare-metal
+
+> Nota: La integración de Limine permitirá un flujo de arranque moderno y flexible. El desarrollo de un shell/interpreter facilitará la interacción directa con el microkernel para pruebas, debugging y futuras extensiones.
+
 ---
 
 Repositorio oficial: https://github.com/gfpw/microkernelia
