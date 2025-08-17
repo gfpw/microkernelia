@@ -7,15 +7,15 @@ pub struct Model {
     pub size: usize,
 }
 
-static mut MODEL: Option<Model> = None;
+pub static mut MODEL: Option<Model> = None;
 
 /// Carga un modelo AI desde virtio-fs y lo mapea en memoria contigua.
 pub fn load_model(path: &str) -> Result<(), &'static str> {
     // Asume que el buffer máximo de modelo es 8 MiB
     const MAX_MODEL_SIZE: usize = 8 * 1024 * 1024;
-    // Reservar buffer estático (en producción, usar allocador real)
+    // Reservar buffer estático
     static mut MODEL_BUF: [u8; MAX_MODEL_SIZE] = [0; MAX_MODEL_SIZE];
-    let buf = unsafe { &mut MODEL_BUF };
+    let buf = unsafe { &mut MODEL_BUF[..] };
     let read = fs::read_file(path, buf).ok_or("fs read error")?;
     unsafe {
         MODEL = Some(Model {
@@ -30,7 +30,7 @@ pub fn load_model(path: &str) -> Result<(), &'static str> {
 /// El modelo es un diccionario serializado: [len][prompt][len][respuesta]...
 pub fn infer(prompt: &str) -> &'static str {
     unsafe {
-        if let Some(model) = &MODEL {
+        if let Some(model) = MODEL.as_ref() {
             let mut i = 0;
             let data = model.data;
             while i < data.len() {
@@ -60,9 +60,4 @@ pub fn infer(prompt: &str) -> &'static str {
             return ""; // No hay modelo cargado: respuesta vacía concreta
         }
     }
-}
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
 }

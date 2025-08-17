@@ -1,0 +1,20 @@
+[package]
+name = "mcp_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+ai_runtime = { path = "../ai_runtime" }
+mcp_vsock_transport = { path = "../mcp_vsock_transport" }
+logging = { path = "../logging" }
+linked_list_allocator = { version = "0.10", default-features = false, optional = true }
+
+[features]
+default = []
+global-allocator = ["linked_list_allocator"]
+
+[target.'cfg(target_os = "none")'.dependencies]
+linked_list_allocator = { version = "0.10", optional = true }

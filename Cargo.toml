@@ -1,10 +1,10 @@
 [workspace]
 members = [
     "kernel",
-    "drivers-virtio",
-    "mcp-core",
-    "mcp-vsock-transport",
-    "ai-runtime",
+    "drivers_virtio",
+    "mcp_core",
+    "mcp_vsock_transport",
+    "ai_runtime",
     "logging",
     "xtask",
     "tools/mcp-cli"

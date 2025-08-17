@@ -57,8 +57,3 @@ pub fn log_read(out: &mut [u8]) -> usize {
     }
     n
 }
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
-}

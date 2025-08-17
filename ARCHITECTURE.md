@@ -3,10 +3,10 @@
 ## Estructura del workspace
 
 - `kernel/`: Núcleo Rust no_std, entrypoint, memoria, scheduler, logging serial.
-- `drivers-virtio/`: Drivers virtio (vsock, fs, block opcional).
-- `mcp-core/`: Tipos y lógica MCP (JSON-RPC, framing, schemas).
-- `mcp-vsock-transport/`: Transporte MCP sobre virtio-vsock.
-- `ai-runtime/`: Motor de inferencia AI (stub inicial, integración futura con ggml/candle).
+- `drivers_virtio/`: Drivers virtio (vsock, fs, block opcional).
+- `mcp_core/`: Tipos y lógica MCP (JSON-RPC, framing, schemas).
+- `mcp_vsock_transport/`: Transporte MCP sobre virtio-vsock.
+- `ai_runtime/`: Motor de inferencia AI (stub inicial, integración futura con ggml/candle).
 - `logging/`: Buffer de logs y métricas.
 - `xtask/`: Herramientas de build, imagen y ejecución de microVM.
 - `tools/mcp-cli/`: CLI host-side para pruebas MCP.
@@ -18,6 +18,19 @@
 3. Integrar drivers virtio y transporte MCP.
 4. Añadir stub de AI runtime y exponer herramientas MCP.
 5. Scripts de build y pruebas de integración.
+
+## Build y dependencias
+
+- El kernel debe compilarse con la feature `global-allocator`:
+  ```sh
+  cargo build -p kernel --target x86_64-unknown-none --release --features global-allocator
+  ```
+- `drivers_virtio` solo define panic handler si se compila como crate raíz y no como dependencia del kernel.
+- Para compilar binarios de usuario:
+  ```sh
+  cargo build -p mcp-cli
+  cargo build -p xtask
+  ```
 
 ## Protección de memoria y robustez de stack
 

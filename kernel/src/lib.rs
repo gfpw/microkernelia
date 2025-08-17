@@ -2,12 +2,24 @@
 #![no_main]
 
 use core::panic::PanicInfo;
+extern crate alloc;
+use linked_list_allocator::LockedHeap;
 extern crate drivers_virtio;
-extern crate mcp_core;
-extern crate mcp_vsock_transport;
 extern crate ai_runtime;
+extern crate mcp_vsock_transport;
+extern crate mcp_core;
+
+#[macro_use]
+extern crate logging;
 
 mod tests;
+
+// Tamaño del heap: 1 MiB
+const HEAP_SIZE: usize = 1024 * 1024;
+static mut HEAP_SPACE: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+
+#[global_allocator]
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
@@ -39,7 +51,11 @@ pub extern "C" fn _start() -> ! {
         mmu_insert_guard_page(&__stack_end as *const _ as usize - PAGE_SIZE);
         // Inicializa canario de stack principal
         init_stack_canary(&__stack_start as *const _ as *mut u64);
+        // Inicializa el heap global
+        ALLOCATOR.lock().init(HEAP_SPACE.as_ptr() as usize, HEAP_SIZE);
     }
+    // Inicializa el heap global de mcp_core (para alloc/Vec en no_std)
+    mcp_core::init_heap(HEAP_SPACE.as_ptr() as usize, HEAP_SIZE);
     // Ejecuta pruebas automáticas de stack
     tests::test_stack_canary();
     // tests::test_guard_page(); // Descomentar para probar page fault (detendrá el kernel)
@@ -48,7 +64,6 @@ pub extern "C" fn _start() -> ! {
     drivers_virtio::fs::init();
     mcp_vsock_transport::vsock_transport::init();
     mcp_core::mcp_server::init();
-    spawn(ejemplo_task, "ejemplo");
     run_scheduler();
 }
 
@@ -63,8 +78,8 @@ fn panic(_info: &PanicInfo) -> ! {
 macro_rules! serial_println {
     ($($arg:tt)*) => {{
         let msg = alloc::format!(concat!($($arg)*, "\n"));
-        $crate::logging::log_write(&msg);
-        $crate::serial::_print(format_args_nl!($($arg)*));
+        logging::log_write(&msg);
+        $crate::serial::_print(format_args!("{}", msg));
     }};
 }
 
@@ -90,7 +105,8 @@ const FRAME_SIZE: usize = 2 * 1024 * 1024;
 const MAX_FRAMES: usize = 128;
 static mut FRAME_BITMAP: [u8; MAX_FRAMES] = [0; MAX_FRAMES];
 
-pub fn alloc_frame() -> Option<usize> {
+// implementación interna que devuelve Option<usize>
+fn alloc_frame_impl() -> Option<usize> {
     unsafe {
         for (i, used) in FRAME_BITMAP.iter_mut().enumerate() {
             if *used == 0 {
@@ -100,6 +116,18 @@ pub fn alloc_frame() -> Option<usize> {
         }
         None
     }
+}
+
+// wrapper con la firma que usan los drivers: extern "Rust" fn alloc_frame();
+#[no_mangle]
+pub extern "Rust" fn alloc_frame() {
+    // Llamamos a impl y descartamos el resultado. Drivers solo necesitan el efecto.
+    let _ = alloc_frame_impl();
+}
+
+// Si otra parte del kernel necesita la dirección, expón la impl:
+pub fn alloc_frame_get() -> Option<usize> {
+    alloc_frame_impl()
 }
 
 pub fn free_frame(addr: usize) {
@@ -146,6 +174,7 @@ const PAGE_SIZE: usize = 4096;
 const PAGE_ENTRIES: usize = 512;
 
 #[repr(align(4096))]
+#[derive(Clone, Copy)]
 pub struct PageTable([u64; PAGE_ENTRIES]);
 
 static mut PML4: PageTable = PageTable([0; PAGE_ENTRIES]);
@@ -323,7 +352,7 @@ pub struct Task {
     pub finished: bool,
 }
 
-static mut TASKS: [Option<Task>; 4] = [None, None, None, None];
+static mut TASKS: [Option<Task>; 8] = [None, None, None, None, None, None, None, None];
 static mut CURRENT: usize = 0;
 
 pub fn spawn(entry: fn(), name: &'static str) {
@@ -337,7 +366,27 @@ pub fn spawn(entry: fn(), name: &'static str) {
     }
 }
 
+// --- Logging as a Task ---
+fn log_task() {
+    // Llama periódicamente a log_flush() de drivers-virtio
+    // (solo si la feature virtio-log está activa)
+    #[cfg(feature = "virtio-log")]
+    {
+        drivers_virtio::log_flush();
+    }
+    // Simula espera cooperativa (en el futuro: yield, sleep, timer, etc.)
+}
+
+// --- Scheduler multitarea cooperativo ---
 pub fn run_scheduler() -> ! {
+    // Spawnea el logging task como la primera tarea
+    static mut LOG_TASK_SPAWNED: bool = false;
+    unsafe {
+        if (!LOG_TASK_SPAWNED) {
+            spawn(log_task, "log_task");
+            LOG_TASK_SPAWNED = true;
+        }
+    }
     loop {
         unsafe {
             for (i, task) in TASKS.iter_mut().enumerate() {
@@ -345,10 +394,15 @@ pub fn run_scheduler() -> ! {
                     if !t.finished {
                         CURRENT = i;
                         (t.entry)();
-                        t.finished = true;
+                        // El logging task nunca termina
+                        if t.name != "log_task" {
+                            t.finished = true;
+                        }
                     }
                 }
             }
+            // Después de cada ronda, el logging task hace flush de logs
+            // (ya está incluido como task, pero aquí podríamos agregar timers, IPC, etc.)
         }
     }
 }

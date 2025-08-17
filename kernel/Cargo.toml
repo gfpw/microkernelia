@@ -7,8 +7,15 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
-drivers-virtio = { path = "../drivers-virtio" }
-mcp-core = { path = "../mcp-core" }
-mcp-vsock-transport = { path = "../mcp-vsock-transport" }
-ai-runtime = { path = "../ai-runtime" }
+drivers_virtio = { path = "../drivers_virtio", features = ["kernel"], default-features = false }
+ai_runtime = { path = "../ai_runtime" }
+mcp_vsock_transport = { path = "../mcp_vsock_transport" }
 logging = { path = "../logging" }
+mcp_core = { path = "../mcp_core" }
+linked_list_allocator = "0.10"
+
+[features]
+default = []
+global-allocator = ["mcp_core/global-allocator"]
+virtio-log = []
+kernel = ["drivers_virtio/kernel"]

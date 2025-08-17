@@ -1,346 +1,333 @@
 {
-"meta": {
-"title": "Build a Rust Unikernel with an In-Kernel AI Inference Engine and MCP-based IPC",
-"audience": "Senior systems/virtualization engineer + agentic codegen assistant",
-"objective": "Create a Rust-based unikernel (ring 0, no\_std) that embeds a small AI inference runtime and exposes all interactions (intra-VM app ↔ AI service, and inter-VM) via the Model Context Protocol (MCP) over virtio-vsock. Provide reproducible tooling, build scripts, tests, and deployment on QEMU-KVM and Firecracker.",
-"key\_repos": \[
-"[https://github.com/torokernel/torokernel](https://github.com/torokernel/torokernel)",
-"[https://github.com/orgs/modelcontextprotocol/repositories](https://github.com/orgs/modelcontextprotocol/repositories)",
-"[https://github.com/rust-vmm/kvm](https://github.com/rust-vmm/kvm)",
-"[https://github.com/rust-vmm/vm-virtio](https://github.com/rust-vmm/vm-virtio)",
-"[https://github.com/plnxwr/libvirt-mcp](https://github.com/plnxwr/libvirt-mcp)"
-],
-"authoritative\_sources": \[
-"[https://github.com/torokernel/torokernel](https://github.com/torokernel/torokernel)",
-"[https://github.com/modelcontextprotocol](https://github.com/modelcontextprotocol)",
-"[https://docs.anthropic.com/en/docs/mcp](https://docs.anthropic.com/en/docs/mcp)",
-"[https://modelcontextprotocol.io/specification/2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26)",
-"[https://github.com/rust-vmm/kvm](https://github.com/rust-vmm/kvm)",
-"[https://github.com/rust-vmm/vm-virtio](https://github.com/rust-vmm/vm-virtio)",
-"[https://github.com/rust-vmm/community](https://github.com/rust-vmm/community)"
-],
-"citations": \[
-"Toro: microVM-focused unikernel with virtio-fs and virtio-vsock, tiny image, cooperative scheduler, gdbstub. ([GitHub][1])",
-"MCP: open protocol to connect LLM apps with tools/data; reference org and spec. ([GitHub][2], [docs.anthropic.com][3], [modelcontextprotocol.io][4])",
-"rust-vmm kvm & vm-virtio crates: KVM bindings/safe wrappers and virtio devices/queues. ([GitHub][5])",
-"MCP in the ecosystem (news/GA in VS Code). ([The GitHub Blog][6], [The Verge][7], [Axios][8])"
-]
-},
-"constraints\_and\_scope": {
-"language": "Rust (no\_std for kernel, std allowed only in host-side tooling/tests).",
-"ring\_level": "All kernel and AI runtime code executes at ring 0 within the guest VM.",
-"safety": "Kernel must preserve FPU/SSE/AVX state across context switches and interrupts; avoid UB and panics in hot paths.",
-"model\_size": "Target <= 200MB model file (prefer 30–150MB quantized), loaded via virtio-fs at boot.",
-"transport": "All API surfaces (intra-guest and inter-VM) use MCP messages over a framed transport on AF\_VSOCK (virtio-vsock). No ad-hoc protocols.",
-"hypervisors": "QEMU-KVM (microvm machine type) and Firecracker.",
-"performance\_budget": {
-"cold\_boot": "< 300ms to start MCP server after guest entry (stretch goal < 150ms)",
-"P95\_inference\_latency\_ms": 80,
-"throughput\_req\_s": "configurable; start with 10 req/s single-VM"
+  "meta": {
+    "title": "Build a Rust Unikernel with an In-Kernel AI Inference Engine and MCP-based IPC",
+    "audience": "Senior systems/virtualization engineer + agentic codegen assistant",
+    "objective": "Create a Rust-based unikernel (ring 0, no_std) that embeds a small AI inference runtime and exposes all interactions (intra-VM app ↔ AI service, and inter-VM) via the Model Context Protocol (MCP) over virtio-vsock. Provide reproducible tooling, build scripts, tests, and deployment on QEMU-KVM and Firecracker.",
+    "key_repos": [
+      "https://github.com/torokernel/torokernel",
+      "https://github.com/orgs/modelcontextprotocol/repositories",
+      "https://github.com/rust-vmm/kvm",
+      "https://github.com/rust-vmm/vm-virtio",
+      "https://github.com/plnxwr/libvirt-mcp"
+    ],
+    "authoritative_sources": [
+      "https://github.com/torokernel/torokernel",
+      "https://github.com/modelcontextprotocol",
+      "https://docs.anthropic.com/en/docs/mcp",
+      "https://modelcontextprotocol.io/specification/2025-03-26",
+      "https://github.com/rust-vmm/kvm",
+      "https://github.com/rust-vmm/vm-virtio",
+      "https://github.com/rust-vmm/community"
+    ],
+    "citations": [
+      "Toro: microVM-focused unikernel with virtio-fs and virtio-vsock, tiny image, cooperative scheduler, gdbstub.",
+      "MCP: open protocol to connect LLM apps with tools/data; reference org and spec.",
+      "rust-vmm kvm & vm-virtio crates: KVM bindings/safe wrappers and virtio devices/queues.",
+      "MCP in the ecosystem (news/GA in VS Code)."
+    ]
+  },
+  "constraints_and_scope": {
+    "language": "Rust (no_std for kernel, std allowed only in host-side tooling/tests).",
+    "ring_level": "All kernel and AI runtime code executes at ring 0 within the guest VM.",
+    "safety": "Kernel must preserve FPU/SSE/AVX state across context switches and interrupts; avoid UB and panics in hot paths.",
+    "model_size": "Target <= 200MB model file (prefer 30–150MB quantized), loaded via virtio-fs at boot.",
+    "transport": "All API surfaces (intra-guest and inter-VM) use MCP messages over a framed transport on AF_VSOCK (virtio-vsock). No ad-hoc protocols.",
+    "hypervisors": "QEMU-KVM (microvm machine type) and Firecracker.",
+    "performance_budget": {
+      "cold_boot": "< 300ms to start MCP server after guest entry (stretch goal < 150ms)",
+      "P95_inference_latency_ms": 80,
+      "throughput_req_s": "configurable; start with 10 req/s single-VM"
+    }
+  },
+  "deliverables": {
+    "artifacts": [
+      "Rust unikernel crate workspace (kernel, drivers, mcp server, ai runtime).",
+      "Host-side MCP client CLI (Rust) for local/tests.",
+      "Integration tests that boot a microVM, run MCP calls, validate outputs.",
+      "Makefile + Cargo xtask runner for build/run.",
+      "Docs: ARCHITECTURE.md, BUILD.md, OPERATIONS.md, SECURITY.md.",
+      "Benchmarks: boot time, latency, throughput, CPU features matrix."
+    ],
+    "images": [
+      "Guest kernel ELF + raw microVM disk image with embedded init + config drive (virtio-fs) that contains model weights."
+    ]
+  },
+  "architecture": {
+    "high_level": [
+      "Guest (Rust no_std) boots → initializes memory, interrupts, time, virtio bus → mounts virtio-fs → eagerly mmaps/loads model to contiguous memory → spawns kernel tasks: (A) MCP server loop over vsock; (B) inference worker; (C) observability (metrics/log ring).",
+      "All requests, including local in-VM calls from an app layer, flow through MCP envelopes. An optional in-guest app shim links to the MCP client and talks to the server over an in-kernel vsock loopback (CID self).",
+      "Other VMs/host interact via MCP clients over vsock (host CID 2 ⇄ guest CID)."
+    ],
+    "kernel_crates": [
+      "kernel (entry, MM, scheduler, traps, APIC/HPET/TSC timebase, FPU/XSAVE mgmt)",
+      "drivers_virtio (vsock, fs (virtio-fs FUSE-like client or 9p alternative), block (optional))",
+      "mcp_core (no_std JSON-RPC framing + MCP envelopes; serde-lite/borrowed parsing)",
+      "mcp_vsock_transport (vsock framing, backpressure, message boundaries)",
+      "ai_runtime (ggml/gguf via FFI or pure-Rust backend like Candle minimal ops subset)",
+      "allocators (bump + slab for request buffers; page-frame allocator)",
+      "logging (ring buffer exposed via vsock control channel)"
+    ],
+    "MCP_design": {
+      "protocol": "Implement MCP Server in-guest exposing one Tool: infer (and optional health, load_model, metadata). Use MCP spec 2025-03-26.",
+      "transport": "MCP JSON-RPC over length-prefixed frames on AF_VSOCK stream sockets.",
+      "schemas": "Mirror/translate TypeScript MCP schema to Rust types (no_std serde).",
+      "security": "CID allowlist + request quotas + message size caps + simple HMAC option when crossing VM boundaries."
+    ],
+    "AI_runtime_options": [
+      "A) FFI to a static ggml/llama.cpp core compiled with -ffreestanding-friendly flags; expose C ABI to kernel (simpler, proven).",
+      "B) Pure Rust minimal matmul kernels (e.g., candle-core subset) without std; requires intrinsics for AVX2 and XSAVE handling (more work, better control)."
+    ]
+  },
+  "phases": [
+    {
+      "name": "Phase 0 — Environment & Tooling",
+      "goals": [
+        "Install toolchains; prepare KVM/Firecracker; verify nested virtualization if CI is used."
+      ],
+      "steps": [
+        "Install Rust: rustup toolchain install nightly && rustup default nightly.",
+        "Targets: rustup target add x86_64-unknown-none (or build-std via nightly).",
+        "Install llvm & clang (required by bindgen for some crates): Ubuntu sudo apt-get install llvm clang lld build-essential.",
+        "Install QEMU/KVM: sudo apt-get install qemu-kvm and ensure /dev/kvm accessible.",
+        "Install Firecracker: download release binary; set sudo setcap cap_net_admin+ep ./firecracker if needed.",
+        "Install musl-tools only for host-side CLI (guest is no_std; no libc).",
+        "Enable hugepages (optional perf): sudo sysctl vm.nr_hugepages=....",
+        "Create repo workspace: cargo new --vcs git unikernel-ai && cd unikernel-ai.",
+        "Add xtask crate for scripted builds and VM runs."
+      ]
+    },
+    {
+      "name": "Phase 1 — Bootable Rust Kernel Skeleton (no_std)",
+      "goals": [
+        "Bring up a minimal x86_64 kernel with paging, IDT/GDT, timers, and a cooperative scheduler; print to serial; exit cleanly."
+      ],
+      "steps": [
+        "Set #![no_std] #![no_main] with a custom panic_handler.",
+        "Linker script to place .text, .rodata, .data, .bss at 2MiB-aligned addresses; identity map early then switch to higher-half.",
+        "Implement frame allocator (buddy or bitmap) and a GlobalAlloc for slabs and small requests.",
+        "Initialize PIC/APIC, set up HPET/TSC for timers; yield-based cooperative scheduler.",
+        "Serial driver for early logging.",
+        "Unit-tests in cargo test (host) for non-arch code; qemu-system-x86_64 integration test boots and asserts log banner."
+      ]
+    },
+    {
+      "name": "Phase 2 — Virtio Bus + VSOCK + FS",
+      "goals": [
+        "Expose virtio-vsock server and access model files via virtio-fs."
+      ],
+      "steps": [
+        "Vendor or depend on vm-virtio crates for queue handling; implement vsock device driver (RX/TX, credit management).",
+        "Implement a minimal virtio-fs client (FUSE-like protocol subset) sufficient for sequential file reads; mount /models.",
+        "Provide a stable ABI for a host test harness to send MCP messages over vsock.",
+        "Add basic vsock loopback for in-guest MCP client testing (CID self).",
+        "Reference: rust-vmm community & KVM usage patterns."
+      ]
+    },
+    {
+      "name": "Phase 3 — MCP Core (no_std) + Transport",
+      "goals": [
+        "Implement MCP server with JSON-RPC framing and resource/tool registry.",
+        "Create a tiny host-side MCP client CLI for tests."
+      ],
+      "steps": [
+        "Define Rust no_std MCP types mirroring the MCP spec 2025-03-26 (resources, tools, prompts, errors).",
+        "Implement a length-prefixed JSON message codec (borrowed slices; cap message size, e.g., 1 MiB).",
+        "Server registry exposes tools: infer, health, metadata, optional load_model.",
+        "Transport adapter: McpVsockServer binds vsock port, accepts connections, spawns lightweight tasks.",
+        "Host CLI: mcp-cli (std) that resolves guest CID/port and sends MCP envelopes; integration with VS Code/clients later."
+      ]
+    },
+    {
+      "name": "Phase 4 — AI Runtime in Ring 0",
+      "goals": [
+        "Load and run a small quantized model in-kernel; preserve SIMD state correctly."
+      ],
+      "steps": [
+        "Choose backend: (A) FFI to static ggml/llama.cpp core, compiled with -fno-exceptions -fno-unwind-tables -ffunction-sections -fdata-sections, expose C ABI; or (B) a minimal pure-Rust backend (candle-core subset) compiled for no_std.",
+        "Implement model loader to read /models/tiny.gguf from virtio-fs into contiguous pages; verify alignment.",
+        "Initialize FPU/SSE/AVX: set CR0/CR4 bits as required; enable XSAVE/XRSTOR; extend task context to include xsave area; save/restore on switches/IRQs.",
+        "Inference worker accepts MCP infer requests → runs model → returns outputs as JSON.",
+        "Backpressure: bounded MPSC queue of N requests; reject with MCP error on overload."
+      ]
+    },
+    {
+      "name": "Phase 5 — Inter-VM & App Integration via MCP",
+      "goals": [
+        "All app interactions use MCP over vsock; support multiple clients and simple auth.",
+        "Demonstrate cross-VM calls (host and peer VMs)."
+      ],
+      "steps": [
+        "Implement CID allowlist; optional pre-shared HMAC over the framed stream.",
+        "Provide example: another microVM (client) connects over vsock and invokes infer concurrently.",
+        "Ship VS Code example using MCP to talk to the guest (optional), referencing official servers/SDKs for structure."
+      ]
+    },
+    {
+      "name": "Phase 6 — Packaging, Benchmarks, and Docs",
+      "goals": [
+        "One-command build/run; boot and latency benchmarks; troubleshooting docs."
+      ],
+      "steps": [
+        "cargo xtask image builds kernel ELF + raw disk; xtask qemu and xtask firecracker run microVMs with vsock & virtio-fs.",
+        "Benchmark script: measure TTF-Ready (time to MCP ready), P50/P95/P99 latency for infer at various batch sizes.",
+        "Write SECURITY.md (attack surface in ring 0; MCP quotas; fs sandbox paths), OPERATIONS.md (CPU flags AVX2/AVX512 matrices)."
+      ]
+    }
+  ],
+  "implementation_details": {
+    "workspace_layout": {
+      "crates": [
+        "kernel/",
+        "drivers_virtio/",
+        "mcp_core/",
+        "mcp_vsock_transport/",
+        "ai_runtime/",
+        "logging/",
+        "xtask/",
+        "tools/mcp-cli/"
+      ]
+    },
+    "rust_flags": [
+      "RUSTFLAGS='-C panic=abort -C lto=fat -C codegen-units=1 -C target-cpu=native'",
+      "Prefer -Z build-std=core,alloc on nightly to get alloc without full std."
+    ],
+    "linker": "ld.lld with custom linker script; PRUNE unused sections with --gc-sections.",
+    "boot": "Multiboot2 or direct PVH; QEMU -M microvm and Firecracker JSON config.",
+    "virtio": "Use vm-virtio abstractions for queues; implement vsock device and a minimal virtio-fs client sufficient for sequential reads.",
+    "kvm_usage": "Launch via host VMM harness using kvm-ioctls/kvm-bindings patterns for integration tests.",
+    "mcp_schema_mapping": "Codegen or hand-map MCP JSON schemas into no_std Rust types; adhere to spec 2025-03-26.",
+    "observability": "Ring-buffer logs exposed as a control MCP tool get_logs; counters for requests, errors, queue depth.",
+    "resource_limits": "Per-connection inflight cap; global memory pools; explicit zeroization of buffers.",
+    "test_matrix": [
+      "CPU features: SSE2-only, AVX2, AVX-512 (if available).",
+      "Model sizes: 30MB, 70MB, 150MB.",
+      "Hypervisors: QEMU-KVM microvm, Firecracker."
+    ]
+  },
+  "security_considerations": [
+    "Ring 0 inference expands kernel attack surface; keep parsing minimal and validated.",
+    "Enforce strict MCP message size/time limits; reject unknown methods.",
+    "Use CID allowlist; optional HMAC for inter-VM; disable or sandbox file paths (read-only /models).",
+    "Preserve and sanitize FPU/SIMD state; avoid leaking registers across tasks."
+  ],
+  "tool_installation_commands": {
+    "ubuntu_debian": [
+      "sudo apt-get update",
+      "sudo apt-get install -y build-essential llvm clang lld qemu-kvm musl-tools pkg-config cmake ninja-build",
+      "rustup toolchain install nightly",
+      "rustup default nightly",
+      "rustup target add x86_64-unknown-none",
+      "curl -LO https://github.com/firecracker-microvm/firecracker/releases/download/v1.7.0/firecracker-v1.7.0-x86_64 && chmod +x firecracker-*"
+    ],
+    "permissions": [
+      "sudo usermod -aG kvm $USER  # re-login required",
+      "ls -l /dev/kvm  # verify access"
+    ]
+  },
+  "run_commands_examples": {
+    "qemu_microvm": [
+      "qemu-system-x86_64 -M microvm -cpu host -enable-kvm -m 1024 \\",
+      " -nodefaults -noacpi -display none -serial stdio \\",
+      " -device virtio-vsock-pci,guest-cid=42,disable-legacy=on \\",
+      " -chardev socket,id=vsock,path=/tmp/vm.sock,server=on,nowait \\",
+      " -device vhost-vsock-pci,guest-cid=42,chardev=vsock \\",
+      " -fsdev local,id=fsdev0,path=./models,security_model=none \\",
+      " -device virtio-9p-pci,fsdev=fsdev0,mount_tag=models \\",
+      " -kernel target/x86_64-unknown-none/release/unikernel-ai.elf"
+    ],
+    "firecracker": [
+      "create a vm.json with vsock + drive + kernel path; run ./firecracker --no-api --config-file vm.json"
+    ]
+  },
+  "api_contract_mcp": {
+    "infer_tool": {
+      "name": "infer",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "prompt": { "type": "string", "maxLength": 8192 },
+          "params": {
+            "type": "object",
+            "properties": {
+              "max_tokens": { "type": "integer", "minimum": 1, "maximum": 512 },
+              "temperature": { "type": "number", "minimum": 0, "maximum": 2 }
+            }
+          }
+        },
+        "required": ["prompt"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "tokens": { "type": "integer" },
+          "latency_ms": { "type": "number" }
+        },
+        "required": ["text"]
+      }
+    },
+    "health_tool": {
+      "name": "health",
+      "output": { "status": "ok|degraded|error", "details": "string" }
+    },
+    "metadata_tool": {
+      "name": "metadata",
+      "output": {
+        "model_name": "string",
+        "quantization": "string",
+        "arch": "x86_64",
+        "features": ["SSE2", "AVX2", "AVX-512?"],
+        "build": "git rev + flags"
+      }
+    }
+  },
+  "acceptance_criteria": [
+    "Boots under QEMU-KVM and Firecracker; logs MCP server ready < 300ms.",
+    "Host mcp-cli infer returns coherent output for test prompts.",
+    "Throughput and latency within the performance budget.",
+    "All interactions—app to AI and cross-VM—use MCP envelopes over vsock.",
+    "CI runs integration tests headless with QEMU + KVM (if available)."
+  ],
+  "failure_modes_and_mitigations": [
+    { "mode": "FPU/SIMD corruption", "mitigation": "XSAVE/XRSTOR on context switch, ISR prologue/epilogue save/restore." },
+    { "mode": "Memory exhaustion", "mitigation": "Static arenas + per-conn quotas + reject oversize MCP messages." },
+    { "mode": "Virtio queue stalls", "mitigation": "Watchdogs + queue reset; telemetry counters." },
+    { "mode": "Model file missing", "mitigation": "Graceful metadata indicates NOT_LOADED; load_model tool to retry." }
+  ],
+  "prompts_for_agent": {
+    "role": "You are a systems architect and Rust kernel engineer. You will implement a no_std Rust unikernel with an embedded AI runtime and an MCP server over virtio-vsock.",
+    "style": "Technical, concise, reproducible.",
+    "task_request": "Generate the repository skeleton, code, build scripts, and docs to meet the above objectives.",
+    "step_by_step": [
+      "Scaffold the Cargo workspace with crates listed; include minimal code for kernel entry and panic handler.",
+      "Author a custom linker script and boot path (Multiboot2 or PVH).",
+      "Implement physical/virtual memory management and a cooperative scheduler.",
+      "Implement virtio abstractions using vm-virtio; add vsock server and a minimal virtio-fs client.",
+      "Implement mcp_core no_std JSON-RPC (serde-lite) and mcp-vsock-transport framed protocol.",
+      "Integrate AI runtime: start with a stub that echoes the prompt; then wire to ggml/llama.cpp static lib or a minimal Rust backend.",
+      "Expose MCP tools: infer, health, metadata, optional load_model.",
+      "Write xtask to build the ELF, create a disk image, and run QEMU/Firecracker.",
+      "Create tools/mcp-cli to send MCP requests to the guest over vsock.",
+      "Add integration tests that boot a microVM in QEMU, send infer, assert response, and tear down.",
+      "Document build/run, CPU features required, and troubleshooting."
+    ]
+  },
+  "references": {
+    "unikernel_and_microvm": [
+      "Toro Kernel repo (features: vsock, virtio-fs, microVM focus)."
+    ],
+    "mcp": [
+      "Model Context Protocol org and servers.",
+      "MCP docs and spec."
+    ],
+    "rust_vmm": [
+      "KVM bindings and ioctls.",
+      "vm-virtio crates and releases notes (bindgen/clang dep).",
+      "Community overview."
+    ],
+    "context_material": [
+      "Vsock with unikernels (background).",
+      "Ecosystem adoption of MCP."
+    ]
+  }
 }
-},
-"deliverables": {
-"artifacts": \[
-"Rust unikernel crate workspace (kernel, drivers, mcp server, ai runtime).",
-"Host-side MCP client CLI (Rust) for local/tests.",
-"Integration tests that boot a microVM, run MCP calls, validate outputs.",
-"Makefile + Cargo xtask runner for build/run.",
-"Docs: ARCHITECTURE.md, BUILD.md, OPERATIONS.md, SECURITY.md.",
-"Benchmarks: boot time, latency, throughput, CPU features matrix."
-],
-"images": \[
-"Guest kernel ELF + raw microVM disk image with embedded init + config drive (virtio-fs) that contains model weights."
-]
-},
-"architecture": {
-"high\_level": \[
-"Guest (Rust no\_std) boots → initializes memory, interrupts, time, virtio bus → mounts virtio-fs → eagerly mmaps/loads model to contiguous memory → spawns kernel tasks: (A) MCP server loop over vsock; (B) inference worker; (C) observability (metrics/log ring).",
-"All requests, including local in-VM calls from an app layer, flow through MCP envelopes. An optional in-guest app shim links to the MCP client and talks to the server over an in-kernel vsock loopback (CID self).",
-"Other VMs/host interact via MCP clients over vsock (host CID 2 ⇄ guest CID)."
-],
-"kernel\_crates": \[
-"kernel (entry, MM, scheduler, traps, APIC/HPET/TSC timebase, FPU/XSAVE mgmt)",
-"drivers-virtio (vsock, fs (virtio-fs FUSE-like client or 9p alternative), block (optional))",
-"mcp-core (no\_std JSON-RPC framing + MCP envelopes; serde-lite/borrowed parsing)",
-"mcp-vsock-transport (vsock framing, backpressure, message boundaries)",
-"ai-runtime (ggml/gguf via FFI or pure-Rust backend like Candle minimal ops subset)",
-"allocators (bump + slab for request buffers; page-frame allocator)",
-"logging (ring buffer exposed via vsock control channel)"
-],
-"MCP\_design": {
-"protocol": "Implement MCP Server in-guest exposing one Tool: `infer` (and optional `health`, `load_model`, `metadata`). Use MCP spec 2025-03-26.",
-"transport": "MCP JSON-RPC over length-prefixed frames on AF\_VSOCK stream sockets.",
-"schemas": "Mirror/translate TypeScript MCP schema to Rust types (no\_std serde).",
-"security": "CID allowlist + request quotas + message size caps + simple HMAC option when crossing VM boundaries."
-},
-"AI\_runtime\_options": \[
-"A) FFI to a static ggml/llama.cpp core compiled with -ffreestanding-friendly flags; expose C ABI to kernel (simpler, proven).",
-"B) Pure Rust minimal matmul kernels (e.g., candle-core subset) without std; requires intrinsics for AVX2 and XSAVE handling (more work, better control)."
-]
-},
-"phases": \[
-{
-"name": "Phase 0 — Environment & Tooling",
-"goals": \[
-"Install toolchains; prepare KVM/Firecracker; verify nested virtualization if CI is used."
-],
-"steps": \[
-"Install Rust: `rustup toolchain install nightly && rustup default nightly`.",
-"Targets: `rustup target add x86_64-unknown-none` (or build-std via nightly).",
-"Install llvm & clang (required by bindgen for some crates): Ubuntu `sudo apt-get install llvm clang lld build-essential`.",
-"Install QEMU/KVM: `sudo apt-get install qemu-kvm` and ensure `/dev/kvm` accessible.",
-"Install Firecracker: download release binary; set `sudo setcap cap_net_admin+ep ./firecracker` if needed.",
-"Install `musl-tools` only for host-side CLI (guest is no\_std; no libc).",
-"Enable hugepages (optional perf): `sudo sysctl vm.nr_hugepages=...`.",
-"Create repo workspace: `cargo new --vcs git unikernel-ai && cd unikernel-ai`.",
-"Add `xtask` crate for scripted builds and VM runs."
-]
-},
-{
-"name": "Phase 1 — Bootable Rust Kernel Skeleton (no\_std)",
-"goals": \[
-"Bring up a minimal x86\_64 kernel with paging, IDT/GDT, timers, and a cooperative scheduler; print to serial; exit cleanly."
-],
-"steps": \[
-"Set `#![no_std] #![no_main]` with a custom `panic_handler`.",
-"Linker script to place `.text`, `.rodata`, `.data`, `.bss` at 2MiB-aligned addresses; identity map early then switch to higher-half.",
-"Implement frame allocator (buddy or bitmap) and a `GlobalAlloc` for slabs and small requests.",
-"Initialize PIC/APIC, set up HPET/TSC for timers; yield-based cooperative scheduler.",
-"Serial driver for early logging.",
-"Unit-tests in `cargo test` (host) for non-arch code; qemu-system-x86\_64 integration test boots and asserts log banner."
-]
-},
-{
-"name": "Phase 2 — Virtio Bus + VSOCK + FS",
-"goals": \[
-"Expose virtio-vsock server and access model files via virtio-fs."
-],
-"steps": \[
-"Vendor or depend on `vm-virtio` crates for queue handling; implement vsock device driver (RX/TX, credit management). ([GitHub][9])",
-"Implement a minimal virtio-fs client (FUSE-like protocol subset) sufficient for sequential file reads; mount `/models`.",
-"Provide a stable ABI for a host test harness to send MCP messages over vsock.",
-"Add basic vsock loopback for in-guest MCP client testing (CID self).",
-"Reference: rust-vmm community & KVM usage patterns. ([GitHub][10])"
-]
-},
-{
-"name": "Phase 3 — MCP Core (no\_std) + Transport",
-"goals": \[
-"Implement MCP server with JSON-RPC framing and resource/tool registry.",
-"Create a tiny host-side MCP client CLI for tests."
-],
-"steps": \[
-"Define Rust no\_std MCP types mirroring the MCP spec 2025-03-26 (resources, tools, prompts, errors). ([modelcontextprotocol.io][4])",
-"Implement a length-prefixed JSON message codec (borrowed slices; cap message size, e.g., 1 MiB).",
-"Server registry exposes tools: `infer`, `health`, `metadata`, optional `load_model`.",
-"Transport adapter: `McpVsockServer` binds vsock port, accepts connections, spawns lightweight tasks.",
-"Host CLI: `mcp-cli` (std) that resolves guest CID/port and sends MCP envelopes; integration with VS Code/clients later. ([The GitHub Blog][6])"
-]
-},
-{
-"name": "Phase 4 — AI Runtime in Ring 0",
-"goals": \[
-"Load and run a small quantized model in-kernel; preserve SIMD state correctly."
-],
-"steps": \[
-"Choose backend: (A) FFI to static ggml/llama.cpp core, compiled with `-fno-exceptions -fno-unwind-tables -ffunction-sections -fdata-sections`, expose C ABI; or (B) a minimal pure-Rust backend (candle-core subset) compiled for no\_std.",
-"Implement model loader to read `/models/tiny.gguf` from virtio-fs into contiguous pages; verify alignment.",
-"Initialize FPU/SSE/AVX: set CR0/CR4 bits as required; enable XSAVE/XRSTOR; extend task context to include xsave area; save/restore on switches/IRQs.",
-"Inference worker accepts MCP `infer` requests → runs model → returns outputs as JSON.",
-"Backpressure: bounded MPSC queue of N requests; reject with MCP error on overload."
-]
-},
-{
-"name": "Phase 5 — Inter-VM & App Integration via MCP",
-"goals": \[
-"All app interactions use MCP over vsock; support multiple clients and simple auth.",
-"Demonstrate cross-VM calls (host and peer VMs)."
-],
-"steps": \[
-"Implement CID allowlist; optional pre-shared HMAC over the framed stream.",
-"Provide example: another microVM (client) connects over vsock and invokes `infer` concurrently.",
-"Ship VS Code example using MCP to talk to the guest (optional), referencing official servers/SDKs for structure. ([GitHub][11])"
-]
-},
-{
-"name": "Phase 6 — Packaging, Benchmarks, and Docs",
-"goals": \[
-"One-command build/run; boot and latency benchmarks; troubleshooting docs."
-],
-"steps": \[
-"`cargo xtask image` builds kernel ELF + raw disk; `xtask qemu` and `xtask firecracker` run microVMs with vsock & virtio-fs.",
-"Benchmark script: measure TTF-Ready (time to MCP ready), P50/P95/P99 latency for `infer` at various batch sizes.",
-"Write SECURITY.md (attack surface in ring 0; MCP quotas; fs sandbox paths), OPERATIONS.md (CPU flags AVX2/AVX512 matrices)."
-]
-}
-],
-"implementation\_details": {
-"workspace\_layout": {
-"crates": \[
-"kernel/",
-"drivers-virtio/",
-"mcp-core/",
-"mcp-vsock-transport/",
-"ai-runtime/",
-"logging/",
-"xtask/",
-"tools/mcp-cli/"
-]
-},
-"rust\_flags": \[
-"RUSTFLAGS='-C panic=abort -C lto=fat -C codegen-units=1 -C target-cpu=native'",
-"Prefer `-Z build-std=core,alloc` on nightly to get `alloc` without full std."
-],
-"linker": "ld.lld with custom linker script; PRUNE unused sections with `--gc-sections`.",
-"boot": "Multiboot2 or direct PVH; QEMU `-M microvm` and Firecracker JSON config.",
-"virtio": "Use `vm-virtio` abstractions for queues; implement vsock device and a minimal virtio-fs client sufficient for sequential reads. ([GitHub][9])",
-"kvm\_usage": "Launch via host VMM harness using `kvm-ioctls`/`kvm-bindings` patterns for integration tests. ([GitHub][5])",
-"mcp\_schema\_mapping": "Codegen or hand-map MCP JSON schemas into `no_std` Rust types; adhere to spec 2025-03-26. ([modelcontextprotocol.io][4])",
-"observability": "Ring-buffer logs exposed as a control MCP tool `get_logs`; counters for requests, errors, queue depth.",
-"resource\_limits": "Per-connection inflight cap; global memory pools; explicit zeroization of buffers.",
-"test\_matrix": \[
-"CPU features: SSE2-only, AVX2, AVX-512 (if available).",
-"Model sizes: 30MB, 70MB, 150MB.",
-"Hypervisors: QEMU-KVM microvm, Firecracker."
-]
-},
-"security\_considerations": \[
-"Ring 0 inference expands kernel attack surface; keep parsing minimal and validated.",
-"Enforce strict MCP message size/time limits; reject unknown methods.",
-"Use CID allowlist; optional HMAC for inter-VM; disable or sandbox file paths (read-only `/models`).",
-"Preserve and sanitize FPU/SIMD state; avoid leaking registers across tasks."
-],
-"tool\_installation\_commands": {
-"ubuntu\_debian": \[
-"sudo apt-get update",
-"sudo apt-get install -y build-essential llvm clang lld qemu-kvm musl-tools pkg-config cmake ninja-build",
-"rustup toolchain install nightly",
-"rustup default nightly",
-"rustup target add x86\_64-unknown-none",
-"curl -LO [https://github.com/firecracker-microvm/firecracker/releases/download/v1.7.0/firecracker-v1.7.0-x86\_64](https://github.com/firecracker-microvm/firecracker/releases/download/v1.7.0/firecracker-v1.7.0-x86_64) && chmod +x firecracker-\*"
-],
-"permissions": \[
-"sudo usermod -aG kvm \$USER  # re-login required",
-"ls -l /dev/kvm  # verify access"
-]
-},
-"run\_commands\_examples": {
-"qemu\_microvm": \[
-"qemu-system-x86\_64 -M microvm -cpu host -enable-kvm -m 1024 \\",
-" -nodefaults -noacpi -display none -serial stdio \\",
-" -device virtio-vsock-pci,guest-cid=42,disable-legacy=on \\",
-" -chardev socket,id=vsock,path=/tmp/vm.sock,server=on,nowait \\",
-" -device vhost-vsock-pci,guest-cid=42,chardev=vsock \\",
-" -fsdev local,id=fsdev0,path=./models,security\_model=none \\",
-" -device virtio-9p-pci,fsdev=fsdev0,mount\_tag=models \\",
-" -kernel target/x86\_64-unknown-none/release/unikernel-ai.elf"
-],
-"firecracker": \[
-"create a `vm.json` with vsock + drive + kernel path; run `./firecracker --no-api --config-file vm.json`"
-]
-},
-"api\_contract\_mcp": {
-"infer\_tool": {
-"name": "infer",
-"input\_schema": {
-"type": "object",
-"properties": {
-"prompt": { "type": "string", "maxLength": 8192 },
-"params": {
-"type": "object",
-"properties": {
-"max\_tokens": { "type": "integer", "minimum": 1, "maximum": 512 },
-"temperature": { "type": "number", "minimum": 0, "maximum": 2 }
-}
-}
-},
-"required": \["prompt"]
-},
-"output\_schema": {
-"type": "object",
-"properties": {
-"text": { "type": "string" },
-"tokens": { "type": "integer" },
-"latency\_ms": { "type": "number" }
-},
-"required": \["text"]
-}
-},
-"health\_tool": {
-"name": "health",
-"output": { "status": "ok|degraded|error", "details": "string" }
-},
-"metadata\_tool": {
-"name": "metadata",
-"output": {
-"model\_name": "string",
-"quantization": "string",
-"arch": "x86\_64",
-"features": \["SSE2", "AVX2", "AVX-512?"],
-"build": "git rev + flags"
-}
-}
-},
-"acceptance\_criteria": \[
-"Boots under QEMU-KVM and Firecracker; logs MCP server ready < 300ms.",
-"Host `mcp-cli infer` returns coherent output for test prompts.",
-"Throughput and latency within the performance budget.",
-"All interactions—app to AI and cross-VM—use MCP envelopes over vsock.",
-"CI runs integration tests headless with QEMU + KVM (if available)."
-],
-"failure\_modes\_and\_mitigations": \[
-{ "mode": "FPU/SIMD corruption", "mitigation": "XSAVE/XRSTOR on context switch, ISR prologue/epilogue save/restore." },
-{ "mode": "Memory exhaustion", "mitigation": "Static arenas + per-conn quotas + reject oversize MCP messages." },
-{ "mode": "Virtio queue stalls", "mitigation": "Watchdogs + queue reset; telemetry counters." },
-{ "mode": "Model file missing", "mitigation": "Graceful `metadata` indicates NOT\_LOADED; `load_model` tool to retry." }
-],
-"prompts\_for\_agent": {
-"role": "You are a systems architect and Rust kernel engineer. You will implement a no\_std Rust unikernel with an embedded AI runtime and an MCP server over virtio-vsock.",
-"style": "Technical, concise, reproducible.",
-"task\_request": "Generate the repository skeleton, code, build scripts, and docs to meet the above objectives.",
-"step\_by\_step": \[
-"Scaffold the Cargo workspace with crates listed; include minimal code for kernel entry and panic handler.",
-"Author a custom linker script and boot path (Multiboot2 or PVH).",
-"Implement physical/virtual memory management and a cooperative scheduler.",
-"Implement virtio abstractions using vm-virtio; add vsock server and a minimal virtio-fs client.",
-"Implement `mcp-core` no\_std JSON-RPC (serde-lite) and `mcp-vsock-transport` framed protocol.",
-"Integrate AI runtime: start with a stub that echoes the prompt; then wire to ggml/llama.cpp static lib or a minimal Rust backend.",
-"Expose MCP tools: `infer`, `health`, `metadata`, optional `load_model`.",
-"Write `xtask` to build the ELF, create a disk image, and run QEMU/Firecracker.",
-"Create `tools/mcp-cli` to send MCP requests to the guest over vsock.",
-"Add integration tests that boot a microVM in QEMU, send `infer`, assert response, and tear down.",
-"Document build/run, CPU features required, and troubleshooting."
-]
-},
-"references": {
-"unikernel\_and\_microvm": \[
-"Toro Kernel repo (features: vsock, virtio-fs, microVM focus). ([GitHub][1])"
-],
-"mcp": \[
-"Model Context Protocol org and servers. ([GitHub][2])",
-"MCP docs and spec. ([docs.anthropic.com][3], [modelcontextprotocol.io][4])"
-],
-"rust\_vmm": \[
-"KVM bindings and ioctls. ([GitHub][5])",
-"vm-virtio crates and releases notes (bindgen/clang dep). ([GitHub][9])",
-"Community overview. ([GitHub][10])"
-],
-"context\_material": \[
-"Vsock with unikernels (background). ([nanovms.com][12])",
-"Ecosystem adoption of MCP. ([The GitHub Blog][6], [The Verge][7], [Axios][8])"
-]
-}
-}
-
-[1]: https://github.com/torokernel/torokernel?utm_source=chatgpt.com "This repository contains the source code of toro unikernel"
-[2]: https://github.com/modelcontextprotocol?utm_source=chatgpt.com "Model Context Protocol"
-[3]: https://docs.anthropic.com/en/docs/mcp?utm_source=chatgpt.com "Model Context Protocol (MCP)"
-[4]: https://modelcontextprotocol.io/specification/2025-03-26?utm_source=chatgpt.com "Specification"
-[5]: https://github.com/rust-vmm/kvm?utm_source=chatgpt.com "rust-vmm/kvm"
-[6]: https://github.blog/changelog/2025-07-14-model-context-protocol-mcp-support-in-vs-code-is-generally-available/?utm_source=chatgpt.com "Model Context Protocol (MCP) support in VS Code is ..."
-[7]: https://www.theverge.com/2024/11/25/24305774/anthropic-model-context-protocol-data-sources?utm_source=chatgpt.com "Anthropic launches tool to connect AI systems directly to datasets"
-[8]: https://www.axios.com/2025/04/17/model-context-protocol-anthropic-open-source?utm_source=chatgpt.com "Hot new protocol glues together AI and apps"
-[9]: https://github.com/rust-vmm/vm-virtio?utm_source=chatgpt.com "rust-vmm/vm-virtio: virtio implementation"
-[10]: https://github.com/rust-vmm/community?utm_source=chatgpt.com "rust-vmm community content"
-[11]: https://github.com/modelcontextprotocol/servers?utm_source=chatgpt.com "modelcontextprotocol/servers: Model Context Protocol ..."
-[12]: https://nanovms.com/dev/tutorials/what-is-vsock-why-use-with-unikernels?utm_source=chatgpt.com "What is VSOCK and Why Use it with Unikernels?"

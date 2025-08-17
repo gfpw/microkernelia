@@ -1,0 +1,18 @@
+[package]
+name = "drivers_virtio"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+virtio-log = []
+virtio-panic-handler = []
+kernel = []
+build-fallback-panic-handler = []
+
+[dependencies]
+logging = { path = "../logging" }

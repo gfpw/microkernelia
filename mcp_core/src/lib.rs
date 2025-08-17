@@ -1,8 +1,23 @@
 #![no_std]
+extern crate alloc;
+
+#[cfg(all(feature = "global-allocator", not(test)))]
+use linked_list_allocator::LockedHeap;
+
+#[cfg(all(feature = "global-allocator", not(test)))]
+#[global_allocator]
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
+
+#[cfg(all(feature = "global-allocator", not(test)))]
+pub fn init_heap(heap_start: usize, heap_size: usize) {
+    unsafe {
+        ALLOCATOR.lock().init(heap_start as *mut u8, heap_size);
+    }
+}
 
 pub mod mcp_server {
     use core::sync::atomic::{AtomicBool, Ordering};
-    use crate::ai_runtime;
+    use alloc::vec::Vec;
 
     static READY: AtomicBool = AtomicBool::new(false);
 
@@ -20,8 +35,8 @@ pub mod mcp_server {
     ];
 
     pub fn init() {
-        crate::serial_println!("[mcp] Servidor MCP inicializado (stub)");
         READY.store(true, Ordering::SeqCst);
+        logging::log_write("[mcp] Servidor MCP inicializado (stub)");
     }
 
     pub fn is_ready() -> bool {
@@ -36,15 +51,14 @@ pub mod mcp_server {
             tokens: ai_result.split_whitespace().count() as u32,
             latency_ms: 1,
         };
-        // Serializa manualmente a JSON mínimo (solo para el caso esperado)
         let mut buf = [0u8; 256];
         let n = crate::ai_stub::serialize_infer_response(&resp, &mut buf);
         Some(buf[..n].to_vec())
     }
 
     fn handle_health(_input: &[u8]) -> Option<Vec<u8>> {
-        let status = if ai_runtime::MODEL.is_some() { "ok" } else { "not_loaded" };
-        let details = if ai_runtime::MODEL.is_some() { "modelo cargado" } else { "sin modelo" };
+        let status = if unsafe { core::ptr::addr_of!(ai_runtime::MODEL).as_ref().is_some() } { "ok" } else { "not_loaded" };
+        let details = if unsafe { core::ptr::addr_of!(ai_runtime::MODEL).as_ref().is_some() } { "modelo cargado" } else { "sin modelo" };
         let resp = crate::ai_stub::HealthResponse { status, details };
         let mut buf = [0u8; 128];
         let n = crate::ai_stub::serialize_health_response(&resp, &mut buf);
@@ -52,7 +66,7 @@ pub mod mcp_server {
     }
 
     fn handle_metadata(_input: &[u8]) -> Option<Vec<u8>> {
-        let (model_name, quantization) = if let Some(model) = unsafe { ai_runtime::MODEL.as_ref() } {
+        let (model_name, quantization) = if let Some(_model) = unsafe { core::ptr::addr_of!(ai_runtime::MODEL).as_ref() } {
             ("modelo-bin", "none")
         } else {
             ("not_loaded", "none")
@@ -70,7 +84,6 @@ pub mod mcp_server {
     }
 
     fn handle_load_model(input: &[u8]) -> Option<Vec<u8>> {
-        // Espera JSON: {"path": "ruta/modelo.bin"}
         let path = crate::ai_stub::parse_path_field(input)?;
         match ai_runtime::load_model(path) {
             Ok(()) => {
@@ -85,7 +98,6 @@ pub mod mcp_server {
     }
 
     fn handle_logs(_input: &[u8]) -> Option<Vec<u8>> {
-        // Devuelve los últimos logs del ring buffer
         let mut buf = [0u8; 1024];
         let n = logging::log_read(&mut buf);
         Some(buf[..n].to_vec())
@@ -101,29 +113,34 @@ pub mod mcp_server {
     }
 
     pub fn mcp_server_loop() {
-        crate::serial_println!("[mcp] MCP server loop iniciado");
+        use mcp_vsock_transport::vsock_transport::{read_frame, write_frame};
         let mut buf = [0u8; 4096];
+        logging::log_write("[mcp] MCP server loop iniciado");
         loop {
-            if let Some(frame) = crate::mcp_vsock_transport::read_frame(&mut buf) {
-                // Parsear JSON-RPC: {"method":..., "params":...}
+            let mut log_json_invalid = false;
+            if let Some(frame) = read_frame(&mut buf) {
                 if let Some((method, params)) = crate::ai_stub::parse_json_rpc(frame) {
                     if !["infer", "health", "metadata", "load_model"].contains(&method) {
-                        crate::serial_println!("[mcp] Método desconocido: {}", method);
+                        logging::log_write("[mcp] Método desconocido");
                         continue;
                     }
                     if let Some(resp) = crate::mcp_server::dispatch(method, params) {
-                        let _ = crate::mcp_vsock_transport::write_frame(&resp);
+                        let _ = write_frame(&resp);
                     }
                 } else {
-                    crate::serial_println!("[mcp] JSON-RPC inválido");
+                    log_json_invalid = true;
                 }
+            }
+            if log_json_invalid {
+                logging::log_write("[mcp] JSON-RPC inválido");
             }
         }
     }
 }
 
 pub mod ai_stub {
-    // miniserde eliminado, serialización/deserialización manual mínima
+    use logging::log_write;
+
     #[derive(Debug)]
     pub struct InferRequest<'a> {
         pub prompt: &'a str,
@@ -158,9 +175,7 @@ pub mod ai_stub {
         pub build: &'a str,
     }
 
-    // Funciones de serialización/deserialización mínima (solo para los campos usados)
-    pub fn parse_infer_req(_json_bytes: &[u8]) -> Option<InferRequest> {
-        // Implementar parser mínimo para {"prompt": "..."}
+    pub fn parse_infer_req(_json_bytes: &[u8]) -> Option<InferRequest<'_>> {
         None // TODO: implementar
     }
 
@@ -193,12 +208,8 @@ pub mod ai_stub {
     }
 
     pub fn infer(prompt: &str) -> &'static str {
-        crate::serial_println!("[ai] Recibido prompt: {}", prompt);
+        log_write("[ai] Recibido prompt: ");
+        log_write(prompt);
         "[ai] Respuesta de ejemplo"
     }
-}
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
 }

@@ -4,6 +4,7 @@
 // Se ejecutan desde el arranque llamando a test_stack_canary() y test_guard_page().
 
 use super::*;
+use crate::serial_println;
 
 /// Prueba de detección de corrupción de canario de stack
 pub fn test_stack_canary() {
