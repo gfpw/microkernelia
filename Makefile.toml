@@ -48,3 +48,18 @@ script = [
     "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/liblogging.rlib \\",
     "    ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/x86_64-unknown-none/release/libmcp_core.rlib"
 ]
+
+[tasks.image-iso]
+description = "Genera imagen ISO booteable con Limine"
+dependencies = ["link-elf"]
+script = [
+    "echo \"Workspace root: $CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY\"",
+    "mkdir -p image",
+    "cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/kernel.elf ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/image/kernel.elf",
+    "cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/limine/limine-bios.sys ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/image/",
+    "cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/limine/limine-bios-cd.bin ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/image/",
+    "cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/limine/limine-uefi-cd.bin ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/image/",
+    "cp ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/limine/limine-uefi.sys ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/image/",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/limine/limine-deploy ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/image/kernel.elf",
+    "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/limine/limine-deploy ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/image/"
+]
