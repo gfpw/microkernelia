@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
-drivers_virtio = { path = "../drivers_virtio", features = ["kernel"], default-features = false }
+drivers_virtio = { path = "../drivers_virtio", default-features = false, features = ["kernel"] }
 ai_runtime = { path = "../ai_runtime" }
 mcp_vsock_transport = { path = "../mcp_vsock_transport" }
 logging = { path = "../logging" }

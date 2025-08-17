@@ -5,14 +5,12 @@ edition = "2021"
 build = "build.rs"
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib"]
 
 [features]
 default = []
 virtio-log = []
-virtio-panic-handler = []
 kernel = []
-build-fallback-panic-handler = []
 
 [dependencies]
 logging = { path = "../logging" }

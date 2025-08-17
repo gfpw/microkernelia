@@ -31,6 +31,11 @@
   cargo build -p mcp-cli
   cargo build -p xtask
   ```
+- Para automatizar builds y pruebas, usar cargo-make:
+  ```sh
+  cargo install cargo-make
+  cargo make build-all
+  ```
 
 ## Protección de memoria y robustez de stack
 
@@ -42,30 +47,7 @@ El kernel implementa una MMU x86_64 de producción con:
 - Protección de páginas: código RX, datos/stack/heap RW y NX, guard pages en stacks.
 - Desmapeo seguro de memoria liberada.
 
-### Guard pages y canarios de stack
-- Cada stack de tarea (y el stack principal) termina en una guard page (página no mapeada) para detectar desbordamientos.
-- Se inicializa un canario de pila (valor fijo) al inicio de cada stack. El kernel verifica su integridad al hacer context switch o finalizar la tarea.
-- Si el canario es sobrescrito, se reporta corrupción de stack.
-
-### Pruebas automáticas
-- Al arrancar, el kernel ejecuta pruebas automáticas:
-    - Verifica el canario de stack y simula su corrupción para asegurar la detección.
-    - (Opcional) Intenta escribir en la guard page para provocar un page fault y validar la protección.
-- Los resultados de las pruebas se reportan por log serial y buffer de logs MCP.
-
-### Ejemplo de log de arranque
-```
-[test] Verificando canario de stack...
-[test] Canario OK antes de corrupción
-[test] Canario detectó corrupción correctamente
-[unikernel-ai] Kernel booting...
-```
-
 ## Referencias
-- [Toro Kernel](https://github.com/torokernel/torokernel)
-- [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-03-26)
-- [rust-vmm/vm-virtio](https://github.com/rust-vmm/vm-virtio)
-
----
-
-Este documento se irá ampliando en cada fase.
+- [kernel-ia.json](./kernel-ia.json)
+- [BUILD.md](./BUILD.md)
+- [README.md](./README.md)

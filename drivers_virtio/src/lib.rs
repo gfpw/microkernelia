@@ -121,6 +121,18 @@ pub fn log_flush() {
 #[cfg(not(feature = "virtio-log"))]
 pub fn log_flush() {}
 
+// Manejador de pánico SOLO si somos crate raíz y target bare-metal (nunca si feature kernel)
+#[cfg(all(
+    not(feature = "kernel"),
+    not(test),
+    not(doctest),
+    target_os = "none"
+))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
+
 pub mod pci {
     use crate::alloc_frame;
     use core::ptr::{read_volatile, write_volatile};
@@ -466,11 +478,4 @@ pub mod fs {
         }
         result
     }
-}
-
-use core::panic::PanicInfo;
-
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
 }

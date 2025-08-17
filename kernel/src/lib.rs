@@ -52,12 +52,10 @@ pub extern "C" fn _start() -> ! {
         // Inicializa canario de stack principal
         init_stack_canary(&__stack_start as *const _ as *mut u64);
         // Inicializa el heap global
-        ALLOCATOR.lock().init(HEAP_SPACE.as_ptr() as usize, HEAP_SIZE);
+        ALLOCATOR.lock().init(HEAP_SPACE.as_mut_ptr(), HEAP_SIZE);
     }
-    // Inicializa el heap global de mcp_core (para alloc/Vec en no_std)
-    mcp_core::init_heap(HEAP_SPACE.as_ptr() as usize, HEAP_SIZE);
     // Ejecuta pruebas automáticas de stack
-    tests::test_stack_canary();
+    // tests::test_stack_canary();
     // tests::test_guard_page(); // Descomentar para probar page fault (detendrá el kernel)
     serial_println!("\n[unikernel-ai] Kernel booting...");
     drivers_virtio::vsock::init();

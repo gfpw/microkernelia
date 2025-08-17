@@ -8,7 +8,7 @@ Unikernel Rust no_std orientado a AI y servidores MCP sobre virtio-vsock.
 
 **Autor:** Germán Ferreyra  
 **Paradigma:** Vibe coding (desarrollo iterativo, colaborativo y experimental, priorizando el flow y la creatividad técnica)  
-**Herramientas:** Rust nightly, QEMU, Firecracker, LLVM/Clang/LLD, Powershell, WSL, GitHub, GitHub Copilot (asistente de IA para refactorización, debugging y documentación)
+**Herramientas:** Rust nightly, QEMU, Firecracker, LLVM/Clang/LLD, Powershell, WSL, GitHub, GitHub Copilot
 
 ---
 
@@ -58,12 +58,21 @@ cargo build -p xtask
 
 Para más detalles, ver [BUILD.md](./BUILD.md).
 
+## Automatización de build
+
+Se recomienda usar el script `Makefile.toml` (cargo-make) para automatizar builds, imágenes y pruebas:
+
+```sh
+cargo install cargo-make
+cargo make build-all
+```
+
 ## Estado y roadmap
 
 - [x] Scaffold inicial y crates
 - [x] Kernel mínimo y logging serial
 - [x] Drivers virtio básicos
-- [ ] Integración AI runtime
+- [x] Integración AI runtime
 - [ ] Pruebas de integración y documentación avanzada
 
 ---

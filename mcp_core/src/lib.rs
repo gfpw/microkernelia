@@ -4,17 +4,6 @@ extern crate alloc;
 #[cfg(all(feature = "global-allocator", not(test)))]
 use linked_list_allocator::LockedHeap;
 
-#[cfg(all(feature = "global-allocator", not(test)))]
-#[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
-
-#[cfg(all(feature = "global-allocator", not(test)))]
-pub fn init_heap(heap_start: usize, heap_size: usize) {
-    unsafe {
-        ALLOCATOR.lock().init(heap_start as *mut u8, heap_size);
-    }
-}
-
 pub mod mcp_server {
     use core::sync::atomic::{AtomicBool, Ordering};
     use alloc::vec::Vec;
